@@ -1,0 +1,32 @@
+# Gmail auto-triage daemon. Template: scripts/install_service.sh fills in the
+# checkout path and writes the unit to ~/.config/systemd/user/.
+#   scripts/install_service.sh && systemctl --user enable --now gmail-triage
+# Logs: journalctl --user -u gmail-triage -f   |   per-message: logs/triage.log
+#
+# Type=notify + WatchdogSec: the main loop sends WATCHDOG=1 every ~1s (and
+# while waiting on claude -p), so a hung process is killed and restarted.
+# Exit 78 (EX_CONFIG) = revoked/missing OAuth token or bad config: restarting
+# can't fix that, so it is excluded from Restart=always instead of looping.
+
+[Unit]
+Description=Gmail auto-triage (Gmail watch -> Pub/Sub pull -> Haiku -> labels, stars, important)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+WorkingDirectory=@REPO@
+# claude (cli backend) usually lives in ~/.local/bin
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@REPO@/.venv/bin/python -m gmail_triage
+WatchdogSec=120
+TimeoutStartSec=120
+Restart=always
+RestartSec=10
+RestartPreventExitStatus=78
+
+[Install]
+WantedBy=default.target

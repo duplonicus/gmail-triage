@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit hook: scan staged changes for known secret
+# patterns (Anthropic, Google OAuth, op service-account tokens, JWTs, private
+# keys). Blocks commit if any suspected secret is found.
+#
+# To enable once: git config core.hooksPath .githooks
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+status=0
+
+# Grep staged additions for known secret shapes.
+patterns=(
+  'ops_[A-Za-z0-9._-]{20,}'              # 1Password service account tokens
+  'sk-ant-[A-Za-z0-9_-]{20,}'            # Anthropic API keys
+  'sk-[A-Za-z0-9]{20,}'                  # OpenAI-style keys
+  'AIza[A-Za-z0-9_-]{20,}'               # Google API keys
+  'gho_[A-Za-z0-9]{20,}'                 # GitHub OAuth tokens
+  'ghp_[A-Za-z0-9]{20,}'                 # GitHub PATs
+  '-----BEGIN [A-Z ]*PRIVATE KEY-----'   # Any private key
+  '"refresh_token"\s*:\s*"[^"]{20,}"'    # OAuth refresh tokens in JSON
+  '"client_secret"\s*:\s*"[^"]{20,}"'    # Google OAuth client secrets
+)
+
+diff_added=$(git diff --cached -- $staged | grep -E "^\+" || true)
+for p in "${patterns[@]}"; do
+  if printf '%s\n' "$diff_added" | grep -Eq -- "$p"; then
+    echo "pre-commit: suspected secret pattern detected ($p)." >&2
+    echo "Review the staged diff. If false positive, adjust the hook or use git commit --no-verify (NOT recommended)." >&2
+    status=1
+  fi
+done
+
+exit $status

@@ -1,0 +1,20 @@
+# gmail-triage configuration. Copy to config/config.toml (gitignored) and edit.
+# Secrets never live here: the OAuth token, client secret and (api backend)
+# Anthropic key are in ~/.config/gmail-triage/, next to your profile.toml.
+
+[google]
+project_id = "gmail-triage-yourname"     # must be globally unique; scripts/setup_gcloud.sh creates it
+topic = "gmail-triage"
+subscription = "gmail-triage-sub"
+
+[classifier]
+backend = "cli"                          # "cli" (claude -p, your own Claude Code login) | "api" (Anthropic API key)
+cli_model = "haiku"
+api_model = "claude-haiku-4-5-20251001"
+timeout_seconds = 90
+max_batch = 20                           # messages per classifier call
+
+[daemon]
+debounce_seconds = 5
+safety_sweep_minutes = 15                # history.list even with no notification, in case Pub/Sub drops one
+watch_renew_hours = 24

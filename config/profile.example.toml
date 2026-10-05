@@ -1,0 +1,23 @@
+# Your profile: what the classifier should know about YOU. Copy to
+# ~/.config/gmail-triage/profile.toml and edit. Everything here is optional;
+# with no profile the generic rules in gmail_triage/classifier.py apply.
+#
+# It is pasted into the prompt, so write it the way you would brief an
+# assistant. Label names must match classifier.ALL_LABELS exactly.
+
+owner = "lives in Lisbon, Portugal; looking for a backend developer job; sells prints through a small online shop called Inkwell"
+
+# Applies across labels.
+general = "Mail from the Maple Street tenants' association is legitimate even though it comes through a bulk-mail sender."
+
+[notes]
+# What a job alert has to look like to be worth your time...
+"Jobs › Alerts" = "targets: backend or platform developer roles in Python or Go; Lisbon or remote within the EU."
+# ...and what rules it out. Without this note, Jobs › Skip is never used.
+"Jobs › Skip" = "any title containing Senior, Staff, Principal, Manager or Director; frontend-only roles; agency and aggregator postings."
+# Without this note, Business is never used.
+"Business" = "the owner's Inkwell print shop (Shopify is its storefront, Stripe its payment processor)."
+"Money › Invoices" = "Shopify and Stripe invoices are Money › Invoices even though they are about Inkwell."
+"Money › Statements" = "the owner banks with Millennium bcp and invests through DEGIRO."
+"Money › Taxes" = "Portuguese tax mail: Autoridade Tributária, IRS declarations, e-fatura."
+"Newsletters › AI" = "e.g. Import AI, The Batch."

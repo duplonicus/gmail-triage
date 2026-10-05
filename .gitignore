@@ -1,0 +1,12 @@
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/
+state.json
+*.egg-info/
+token.json
+client_secret*.json
+.env
+config/config.toml
+.claude/
