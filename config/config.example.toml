@@ -18,3 +18,8 @@ max_batch = 20                           # messages per classifier call
 debounce_seconds = 5
 safety_sweep_minutes = 15                # history.list even with no notification, in case Pub/Sub drops one
 watch_renew_hours = 24
+# Labels whose mail is taken out of the inbox once labelled (it stays under the
+# label, unread state untouched). Empty = never archive. Mail that ends up
+# starred, important or Security › Suspicious always stays in the inbox.
+# Example: archive_labels = ["Jobs › Alerts", "Promos"]
+archive_labels = []

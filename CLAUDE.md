@@ -3,7 +3,8 @@
 Gmail watch → Pub/Sub pull → Haiku → labels/stars/important. Setup and ops: README.md.
 
 ## Invariants (tests enforce them — keep it that way)
-- Only ever ADD labels (`classifier.ALL_LABELS`, `STARRED`), with ONE exception: the daemon owns Gmail's `IMPORTANT` marker and adds or removes it on each message it triages. Never archive, mark read, unstar, delete, touch spam. `gmail.apply()` asserts this.
+- Only ever ADD labels (`classifier.ALL_LABELS`, `STARRED`), with ONE exception: the daemon owns Gmail's `IMPORTANT` marker and adds or removes it on each message it triages. Never mark read, unstar, delete, touch spam. `gmail.apply()` asserts this.
+- Archiving (removing `INBOX`) is opt-in and off by default: only labels the owner lists in `daemon.archive_labels`, decided in code by `classifier.archive_policy()`, never for mail that is starred, important or suspicious. `apply()` refuses an INBOX removal unless the config asked for it.
 - Stars and importance are settled in code, not by the prompt: `classifier.star_policy()` / `important_policy()`. The model's `star` only counts for labels in neither `ALWAYS_STAR` nor `NEVER_STAR`.
 - Never guess a label: invalid classifier output → retry once → SKIP (logged).
 - `historyId` advances only after a batch is fully processed; a classifier/backend failure leaves it where it was.

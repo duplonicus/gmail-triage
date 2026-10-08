@@ -4,7 +4,8 @@ A small daemon that labels, stars and marks important each new Gmail message
 about 15–20 seconds after it arrives, using Claude Haiku as the classifier.
 
 It only reads headers and Gmail's snippet (never the body), it has no public
-endpoint, and it cannot archive, delete or mark anything read.
+endpoint, and it cannot delete or mark anything read. It takes mail out of the
+inbox only for labels you list yourself (off by default).
 
 ```
 Gmail users.watch ──► Pub/Sub topic ──► pull subscription ──► daemon (streaming pull)
@@ -27,9 +28,16 @@ systemd, and the label set is the one its author uses. Fork it if yours differs.
   the star rules say so.
 - **Sets Gmail's importance marker both ways.** Gmail's own guess is replaced:
   `IMPORTANT` is added or removed on every message it triages.
-- **Nothing else.** `gmail.apply()` asserts that the only label ever removed is
-  `IMPORTANT`, and that nothing adds TRASH, SPAM, UNREAD or INBOX. Mail in
-  spam, trash or drafts, and mail that already has one of the labels, is skipped.
+- **Archives only what you opt in.** `daemon.archive_labels` in `config.toml`
+  is empty by default, so nothing leaves the inbox. List labels there, e.g.
+  `["Jobs › Alerts", "Promos"]`, and new mail given one of them is taken out of
+  the inbox after it is labelled. It stays unread under its label. Mail that is
+  starred, important or `Security › Suspicious` always stays in the inbox.
+  Restart the service after changing it.
+- **Nothing else.** `gmail.apply()` asserts that the only labels ever removed
+  are `IMPORTANT` and, when you configured archiving, `INBOX`, and that nothing
+  adds TRASH, SPAM, UNREAD or INBOX. Mail in spam, trash or drafts, and mail
+  that already has one of the labels, is skipped.
 - **What leaves your machine:** each message's From, Subject, List-Unsubscribe
   header and Gmail snippet are sent to Anthropic for classification, along
   with your profile (below).

@@ -36,6 +36,7 @@ class Config:
     debounce_seconds: float
     safety_sweep_minutes: float
     watch_renew_hours: float
+    archive_labels: frozenset[str] = frozenset()
 
     @property
     def topic_path(self) -> str:
@@ -57,6 +58,14 @@ def load(path: Path = CONFIG_FILE) -> Config:
     g, c, d = raw["google"], raw["classifier"], raw["daemon"]
     if c["backend"] not in ("cli", "api"):
         raise ConfigError(f"classifier.backend must be 'cli' or 'api', got {c['backend']!r}")
+    from .classifier import ALL_LABELS  # the label names live with the classifier
+
+    archive = d.get("archive_labels", [])
+    if not isinstance(archive, list) or not all(isinstance(l, str) for l in archive):
+        raise ConfigError("daemon.archive_labels must be a list of label names")
+    unknown = sorted(set(archive) - set(ALL_LABELS))
+    if unknown:
+        raise ConfigError(f"daemon.archive_labels has unknown labels: {unknown}")
     return Config(
         project_id=g["project_id"],
         topic=g["topic"],
@@ -69,4 +78,5 @@ def load(path: Path = CONFIG_FILE) -> Config:
         debounce_seconds=float(d["debounce_seconds"]),
         safety_sweep_minutes=float(d["safety_sweep_minutes"]),
         watch_renew_hours=float(d["watch_renew_hours"]),
+        archive_labels=frozenset(archive),
     )

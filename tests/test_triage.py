@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 
@@ -159,7 +160,9 @@ def test_modify_body_adds_labels_and_sets_important_both_ways():
 
 @pytest.mark.parametrize("body", [
     {"addLabelIds": ["L"], "removeLabelIds": ["UNREAD"]},
-    {"addLabelIds": ["L"], "removeLabelIds": ["INBOX"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["INBOX"]},  # archive_ok defaults to False
+    {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "INBOX"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["INBOX", "IMPORTANT"]},
     {"addLabelIds": ["L"], "removeLabelIds": ["STARRED"]},
     {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "UNREAD"]},
     {"addLabelIds": ["L"], "removeLabelIds": []},
@@ -174,6 +177,111 @@ def test_modify_body_adds_labels_and_sets_important_both_ways():
 def test_apply_refuses_destructive_changes(body):
     with pytest.raises(AssertionError):
         G.apply(FakeGmail({}), "1", body)
+
+
+# --------------------------------------------------------------------------- archive (opt-in)
+
+ARCHIVE = frozenset({"Jobs › Alerts", "Jobs › Skip"})
+CFG_ARCHIVE = dataclasses.replace(CFG, archive_labels=ARCHIVE)
+
+
+def test_archive_is_off_unless_configured():
+    assert CFG.archive_labels == frozenset()
+    assert 'archive_labels = []' in C.EXAMPLE_CONFIG_FILE.read_text()
+    for label in K.ALL_LABELS:
+        assert K.archive_policy([label], False, False, CFG.archive_labels) is False
+
+
+@pytest.mark.parametrize("labels,starred,important,expected", [
+    (["Jobs › Alerts"], False, False, True),
+    (["Jobs › Skip"], False, False, True),
+    (["Jobs › Reply"], False, False, False),     # not listed
+    (["Promos"], False, False, False),
+    (["Jobs › Alerts"], True, False, False),     # something to do: stays visible
+    (["Jobs › Alerts"], False, True, False),
+    (["Security › Suspicious", "Jobs › Alerts"], False, False, False),
+])
+def test_archive_policy(labels, starred, important, expected):
+    assert K.archive_policy(labels, starred, important, ARCHIVE) is expected
+
+
+def test_modify_body_archives_only_when_the_decision_says_so():
+    ids = {l: f"L_{l}" for l in K.ALL_LABELS}
+    d = decided("1", ["Jobs › Alerts"])
+    assert G.modify_body({**d, "archive": True}, ids) == {
+        "addLabelIds": ["L_Jobs › Alerts"], "removeLabelIds": ["IMPORTANT", "INBOX"]}
+    assert G.modify_body({**d, "archive": False}, ids) == G.modify_body(d, ids) == {
+        "addLabelIds": ["L_Jobs › Alerts"], "removeLabelIds": ["IMPORTANT"]}
+
+
+@pytest.mark.parametrize("body", [
+    {"addLabelIds": ["L", "STARRED"], "removeLabelIds": ["IMPORTANT", "INBOX"]},
+    {"addLabelIds": ["L", "IMPORTANT"], "removeLabelIds": ["INBOX"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["INBOX", "UNREAD"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "INBOX", "STARRED"]},
+    {"addLabelIds": ["L", "INBOX"], "removeLabelIds": ["IMPORTANT", "INBOX"]},
+])
+def test_apply_refuses_bad_archive_shapes_even_when_archiving_is_on(body):
+    with pytest.raises(AssertionError):
+        G.apply(FakeGmail({}), "1", body, archive_ok=True)
+
+
+def run_three(tmp_path, cfg, dry_run=False):
+    """An alert, a recruiter reply and a promo arrive; returns what was sent to Gmail."""
+    g = FakeGmail({i: msg(i) for i in "abc"}, history=[added(i) for i in "abc"], history_id="77")
+    labels = {"a": ["Jobs › Alerts"], "b": ["Jobs › Reply"], "c": ["Promos"]}
+    t, ids, _ = make(tmp_path, g, echo_runner(lambda m: labels[m["id"]]), dry_run=dry_run, cfg=cfg)
+    t.sync()
+    return g, ids
+
+
+def test_configured_label_leaves_the_inbox_and_nothing_else_does(tmp_path):
+    g, ids = run_three(tmp_path, CFG_ARCHIVE)
+    assert dict(g.modified) == {
+        "a": {"addLabelIds": [ids["Jobs › Alerts"]], "removeLabelIds": ["IMPORTANT", "INBOX"]},
+        "b": {"addLabelIds": [ids["Jobs › Reply"], "STARRED", "IMPORTANT"]},
+        "c": {"addLabelIds": [ids["Promos"]], "removeLabelIds": ["IMPORTANT"]},
+    }
+    assert "INBOX" not in g._messages["a"]["labelIds"]
+    assert "UNREAD" in g._messages["a"]["labelIds"]  # archived, not marked read
+    assert "INBOX" in g._messages["b"]["labelIds"] and "INBOX" in g._messages["c"]["labelIds"]
+
+
+def test_default_config_never_removes_inbox(tmp_path):
+    g, _ = run_three(tmp_path, CFG)
+    assert len(g.modified) == 3
+    assert all("INBOX" not in body.get("removeLabelIds", []) for _, body in g.modified)
+    assert all("INBOX" in g._messages[i]["labelIds"] for i in "abc")
+
+
+def test_dry_run_archives_nothing(tmp_path, caplog):
+    with caplog.at_level(logging.INFO, logger="test-triage"):
+        g, _ = run_three(tmp_path, CFG_ARCHIVE, dry_run=True)
+    assert g.modified == []
+    lines = [r.getMessage() for r in caplog.records if r.name == "test-triage"]
+    assert [("archived=yes" in l) for l in lines] == [True, False, False]
+
+
+def config_with(tmp_path, daemon_line):
+    f = tmp_path / "config.toml"
+    f.write_text(C.EXAMPLE_CONFIG_FILE.read_text().replace("archive_labels = []", daemon_line), encoding="utf-8")
+    return f
+
+
+def test_config_loads_archive_labels(tmp_path):
+    cfg = C.load(config_with(tmp_path, 'archive_labels = ["Jobs › Alerts", "Jobs › Skip"]'))
+    assert cfg.archive_labels == ARCHIVE
+
+
+def test_config_without_the_key_means_no_archiving(tmp_path):
+    assert C.load(config_with(tmp_path, "")).archive_labels == frozenset()
+
+
+@pytest.mark.parametrize("line", ['archive_labels = ["Jobs/Alerts"]', 'archive_labels = ["INBOX"]',
+                                  'archive_labels = "Promos"', "archive_labels = [1]"])
+def test_bad_archive_labels_are_a_config_error(tmp_path, line):
+    with pytest.raises(C.ConfigError, match="archive_labels"):
+        C.load(config_with(tmp_path, line))
 
 
 @pytest.mark.parametrize("labels,expected", [
@@ -201,11 +309,12 @@ def test_parse_days():
 
 # --------------------------------------------------------------------------- pipeline
 
-def make(tmp_path, g, runner, dry_run=False, history_id="50"):
+def make(tmp_path, g, runner, dry_run=False, history_id="50", cfg=None):
+    cfg = cfg or CFG
     state = State(tmp_path / "state.json", persist=not dry_run)
     state.update(history_id=history_id, last_success=None)
     ids = G.ensure_labels(g, create=not dry_run)
-    t = Triage(g, CFG, K.Classifier(CFG, runner=runner), ids, state, dry_run,
+    t = Triage(g, cfg, K.Classifier(cfg, runner=runner), ids, state, dry_run,
                logging.getLogger("test-triage"), ping=lambda: None)
     return t, ids, state
 
@@ -312,7 +421,7 @@ def test_triage_log_columns_survive_pipes_in_subject(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="test-triage"):
         t.sync()
     line = [r.getMessage() for r in caplog.records if r.name == "test-triage"][0]
-    assert line.split(" | ") == ["X ¦ Y <x@y.com>", "Your link ¦ 2026-09-27 02:52", "Security", "star=no", "important=no", "a ¦ b"]
+    assert line.split(" | ") == ["X ¦ Y <x@y.com>", "Your link ¦ 2026-09-27 02:52", "Security", "star=no", "important=no", "archived=no", "a ¦ b"]
 
 
 # --------------------------------------------------------------------------- star policy

@@ -107,6 +107,10 @@ class _Messages:
     def modify(self, userId, id, body):
         def run():
             self.g.modified.append((id, body))
+            m = self.g._messages.get(id)
+            if m is not None:  # behave like Gmail: the message's labels really change
+                kept = [l for l in m["labelIds"] if l not in body.get("removeLabelIds", [])]
+                m["labelIds"] = kept + [l for l in body.get("addLabelIds", []) if l not in kept]
             return {}
         return _Call(run)
 

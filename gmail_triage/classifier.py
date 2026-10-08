@@ -212,6 +212,15 @@ def important_policy(labels: list[str], starred: bool) -> bool:
     return starred or bool(ALWAYS_IMPORTANT & set(labels))
 
 
+def archive_policy(labels: list[str], starred: bool, important: bool, archive_labels: frozenset[str]) -> bool:
+    """Take the message out of the inbox? Only for labels the owner listed in
+    config, and never mail that is starred, important or suspicious: those are
+    the ones meant to be seen."""
+    if starred or important or SUSPICIOUS in labels:
+        return False
+    return bool(archive_labels & set(labels))
+
+
 def parse_output(text: str, expected_ids: set[str]) -> tuple[dict[str, dict], dict[str, str]]:
     """Split model output into (valid decisions by id, invalid reason by id).
 

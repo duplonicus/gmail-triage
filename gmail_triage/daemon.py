@@ -19,7 +19,7 @@ from . import config as C
 from . import gmail as G
 from . import profile as P
 from . import sdnotify
-from .classifier import Classifier, ClassifierError
+from .classifier import Classifier, ClassifierError, archive_policy
 from .state import State
 
 log = logging.getLogger("gmail_triage")
@@ -70,11 +70,13 @@ class Triage:
                 self.tlog.info("%sSKIP | %s | %s | invalid classifier output: %s", prefix, frm, subj, skipped[mid])
                 continue
             d = decisions[mid]
+            d["archive"] = archive_policy(d["labels"], d["star"], d["important"], self.cfg.archive_labels)
             if not self.dry_run:
-                G.apply(self.svc, mid, G.modify_body(d, self.label_ids))
-            self.tlog.info("%s%s | %s | %s | star=%s | important=%s | %s", prefix, frm, subj,
+                G.apply(self.svc, mid, G.modify_body(d, self.label_ids), archive_ok=bool(self.cfg.archive_labels))
+            self.tlog.info("%s%s | %s | %s | star=%s | important=%s | archived=%s | %s", prefix, frm, subj,
                            ",".join(d["labels"]), "yes" if d["star"] else "no",
-                           "yes" if d["important"] else "no", _clip(d["reason"], 100))
+                           "yes" if d["important"] else "no", "yes" if d["archive"] else "no",
+                           _clip(d["reason"], 100))
             self.ping()
         log.info("triaged %d, skipped %d", len(decisions), len(skipped))
         return len(decisions)
