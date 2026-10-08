@@ -99,7 +99,7 @@ Start from [`config/profile.example.toml`](config/profile.example.toml).
 
 ### 1. Install
 ```
-git clone <this repo> && cd gmail-triage
+git clone https://github.com/duplonicus/gmail-triage.git && cd gmail-triage
 uv venv && uv pip install -e '.[dev]'
 .venv/bin/pytest -q
 git config core.hooksPath .githooks        # secret-scanning pre-commit hook
