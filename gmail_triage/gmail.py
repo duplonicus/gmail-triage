@@ -70,6 +70,7 @@ LABEL_COLORS: dict[str, tuple[str, str]] = {  # name -> (background, text)
     "Security › Codes": ("#efa093", "#000000"),  # used once, then noise: paler red
     "Business": ("#ffad47", "#000000"),
     "Government": ("#434343", "#ffffff"),
+    "Education": ("#1c4587", "#ffffff"),
     "Personal": ("#4a86e8", "#ffffff"),
     "Appointments": ("#a479e2", "#ffffff"),
     "Health": ("#f691b2", "#000000"),

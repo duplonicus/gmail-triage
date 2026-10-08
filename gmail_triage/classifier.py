@@ -41,6 +41,7 @@ PRIMARY = [
     "Money › Crypto",
     "Business",
     "Government",
+    "Education",
     "Security",
     "Security › Codes",
     "Personal",
@@ -59,7 +60,7 @@ ALL_LABELS = PRIMARY + [SUSPICIOUS]
 
 # A star means the owner has something to do. Where the label alone settles
 # that, the label wins over the model's `star`; the model only decides for the
-# rest (bills, business, government, personal, ...).
+# rest (bills, business, government, education, personal, ...).
 ALWAYS_STAR = {"Jobs › Reply", "Jobs › Interview"}
 NEVER_STAR = {
     "Jobs › Applied", "Jobs › Rejected", "Jobs › Alerts", "Jobs › Skip",
@@ -100,9 +101,10 @@ DEFINITIONS = {
     "Money › Crypto": "mail from crypto exchanges and wallets (Coinbase, Kraken, Binance, etc.) about the owner's money: deposits, withdrawals, trades, balances, statements. Their login/new-device/password alerts are Security; their codes are Security › Codes; their marketing (yield offers, contests, rewards, new products) is Promos.",
     "Business": "a business or side project the owner runs, as named in the owner's note, other than its invoices (those are Money › Invoices): payment-processor account and compliance requests, payouts, disputes, refunds, customer mail, hosting/domain/app-store notices for it. With no owner's note here, never use this label.",
     "Government": "mail from government agencies other than tax (benefits, passport, driver's licence, health card, elections, courts).",
+    "Education": "schools, colleges, universities and online learning platforms the owner studies with: registrar, admissions and enrolment mail, course, assignment and lab notices, grades, transcripts, certificates and course progress. Mail personally written by an instructor or school staff is Education, not Personal. Their marketing and upsells are Promos; tuition bills are Money › Invoices.",
     "Security": 'new or successful logins, new devices, passkeys added, OAuth/app-access grants (Google "Security alert", "You shared some Google Account data with X", GitHub "third-party OAuth application added"), OAuth-client housekeeping, password resets or changes, account-security settings reminders. These are ALWAYS Security, never Notifications, even when no action is needed.',
     "Security › Codes": 'one-time security/verification/MFA codes, magic sign-in links, and "confirm your email" sign-up verifications, from any sender.',
-    "Personal": 'mail personally written by an actual human to the owner (not about jobs or the owner\'s business). Never automated mail, even if it names a person or group (e.g. "invitation from Org X" is Notifications).',
+    "Personal": 'mail personally written by an actual human to the owner (not about jobs, the owner\'s business or the owner\'s schooling). Never automated mail, even if it names a person or group (e.g. "invitation from Org X" is Notifications).',
     "Appointments": "bookings, confirmations and reminders for a specific date/time (doctor, dentist, vet, services), and calendar reminders including birthdays.",
     "Health": "health, medical, pharmacy and pet/vet mail that is not a booking: prescriptions ready, test results, clinic notices, vet records or documentation.",
     "Orders": "shipping and delivery of things the owner ordered: order shipped, out for delivery, delayed, delivered, ready for pickup, returns. (The payment receipt itself is Money › Receipts.)",
@@ -117,7 +119,7 @@ DEFINITIONS = {
 
 TIE_BREAKS = "TIE-BREAKS: phishing check first; then Jobs; then Security/Security › Codes (a login alert or code is Security even from a bank, exchange or job site); then marketing is Promos regardless of sender; then the most specific Money › label; plain Money and plain Notifications are last resorts."
 
-STAR_RULE = 'STAR (star=true) only mail the owner will have to come back to because there is something to DO: reply, schedule, pay, submit or fix. Jobs › Reply and Jobs › Interview are always starred. Otherwise star only: human-written personal mail, a bill with a payment due that is not automatic, and Money, Business or Government mail that explicitly asks the owner for action (e.g. Stripe "[Action required]", disputes, customer questions, a broker\'s "your action required"). Everything else star=false. Never star mail that only informs, however urgent it sounds: ALL Security and Security › Codes mail (logins, new devices, passkeys, app-access grants, security reminders: the owner triggered them and the label is enough), rejections, application confirmations, job alerts, receipts, statements, "upcoming invoice" notices, shipping updates, notifications, newsletters and promos.'
+STAR_RULE = 'STAR (star=true) only mail the owner will have to come back to because there is something to DO: reply, schedule, pay, submit or fix. Jobs › Reply and Jobs › Interview are always starred. Otherwise star only: human-written personal mail, a bill with a payment due that is not automatic, and Money, Business, Government or Education mail that explicitly asks the owner for action (e.g. Stripe "[Action required]", disputes, customer questions, a broker\'s "your action required"). Everything else star=false. Never star mail that only informs, however urgent it sounds: ALL Security and Security › Codes mail (logins, new devices, passkeys, app-access grants, security reminders: the owner triggered them and the label is enough), rejections, application confirmations, job alerts, receipts, statements, "upcoming invoice" notices, shipping updates, notifications, newsletters and promos.'
 
 OUTPUT_RULE = """OUTPUT: a JSON array with one object per input email, same ids:
 [{"id": "<id>", "labels": ["<label>", ...], "star": true|false, "reason": "<max 12 words>"}]"""

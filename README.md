@@ -21,7 +21,7 @@ systemd, and the label set is the one its author uses. Fork it if yours differs.
 
 ## What it does to your mailbox
 
-- **Creates 29 labels** the first time it runs (below), coloured. A label you
+- **Creates 30 labels** the first time it runs (below), coloured. A label you
   already have with the same name is reused.
 - **Adds** one of those labels to each new inbox message, and `STARRED` when
   the star rules say so.
@@ -45,7 +45,7 @@ Flat Gmail labels; ` › ` is only a naming convention, not nesting.
 | Jobs | `Jobs › Applied`, `Reply`, `Interview`, `Rejected`, `Alerts`, `Skip` |
 | Money | `Money`, `Money › Invoices`, `Receipts`, `Statements`, `Trading`, `Transfers`, `Taxes`, `Crypto` |
 | Security | `Security`, `Security › Codes`, `Security › Suspicious` |
-| Life | `Personal`, `Appointments`, `Health`, `Orders`, `Travel`, `Business`, `Government` |
+| Life | `Personal`, `Appointments`, `Health`, `Orders`, `Travel`, `Business`, `Government`, `Education` |
 | Bulk | `Notifications`, `Newsletters`, `Newsletters › Crypto`, `Newsletters › AI`, `Promos` |
 
 Definitions and tie-breaks: `DEFINITIONS` in [`gmail_triage/classifier.py`](gmail_triage/classifier.py).

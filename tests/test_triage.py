@@ -111,7 +111,7 @@ EXPECTED_LABELS = [
     "Jobs › Applied", "Jobs › Reply", "Jobs › Interview", "Jobs › Rejected", "Jobs › Alerts", "Jobs › Skip",
     "Money", "Money › Invoices", "Money › Receipts", "Money › Statements", "Money › Trading",
     "Money › Transfers", "Money › Taxes", "Money › Crypto",
-    "Business", "Government", "Security", "Security › Codes", "Personal", "Appointments", "Health",
+    "Business", "Government", "Education", "Security", "Security › Codes", "Personal", "Appointments", "Health",
     "Orders", "Travel", "Notifications", "Newsletters", "Newsletters › Crypto", "Newsletters › AI", "Promos",
     "Security › Suspicious",
 ]
@@ -326,7 +326,7 @@ NEVER_STAR = {
 }
 MODEL_DECIDES = {
     "Money", "Money › Invoices", "Money › Trading", "Money › Transfers", "Money › Taxes", "Money › Crypto",
-    "Business", "Government", "Personal", "Appointments", "Health", "Travel",
+    "Business", "Government", "Education", "Personal", "Appointments", "Health", "Travel",
 }
 
 
