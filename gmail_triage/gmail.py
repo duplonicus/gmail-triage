@@ -47,14 +47,14 @@ def load_credentials():
     return creds
 
 
-def build_service(creds):
+def build_service(creds, timeout: int = 30):
     import google_auth_httplib2
     import httplib2
     from googleapiclient.discovery import build
 
     # httplib2 defaults to no timeout; a hung socket would otherwise stall the
     # main loop until the systemd watchdog kills us.
-    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
+    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=timeout))
     return build("gmail", "v1", http=http, cache_discovery=False)
 
 

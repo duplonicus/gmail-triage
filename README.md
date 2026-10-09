@@ -222,6 +222,26 @@ retried every 60 s.
 Stop the service before running the CLI by hand against real state, or use
 `--dry-run` (which never writes `state.json`).
 
+## Back up the mailbox
+
+`.venv/bin/gmail-triage-backup ~/backup/gmail` saves every message as a raw
+`.eml` file plus an `index.jsonl` row with its labels, size, sender and
+attachment names. It only reads from Gmail.
+
+- It is paced at 270 messages a minute, because Gmail's per-user quota allows
+  300. A mailbox of 25,000 takes about an hour and a half.
+- It is resumable: run the same command again and it fetches only what is
+  missing. `complete.json` appears when a run finishes. `--force` starts over.
+- `--query "newer_than:30d"` limits it to a Gmail search.
+
+`.venv/bin/gmail-triage-census ~/backup/gmail` then reads that backup (not
+Gmail) and writes `census.md` and `senders.csv`: size and count by sender,
+year and category, the largest messages, and which messages are delete
+candidates. A message is a candidate only if it is bulk mail (has an
+unsubscribe header), sits in Promotions or Social, has no document attached,
+is not in a thread you wrote in, is not starred, and carries no triage label
+other than Promos or Newsletters. The census reports; it deletes nothing.
+
 ## Failure behaviour
 
 - Hung anywhere (socket, `claude` subprocess) → no `WATCHDOG=1` for 120 s → systemd kills and restarts it.

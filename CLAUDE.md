@@ -12,6 +12,11 @@ Gmail watch → Pub/Sub pull → Haiku → labels/stars/important. Setup and ops
 - `--dry-run` writes nothing: no labels created, no modify, no state.json.
 - A bad `config.toml` or `profile.toml` is exit 78 (needs a human), never a silent fallback to the generic prompt. A missing profile is fine and means generic.
 
+## Backup and census (`backup.py`, `census.py`)
+- Both are read-only: the backup only calls `messages.list`/`get`, the census only reads the backup directory. Neither goes through `gmail.apply()`.
+- The backup is paced under the per-user quota (`PER_MINUTE`) because the daemon shares it. An index row is written only after its `.eml` is on disk; `complete.json` is written last.
+- `census.keep_reasons()` is the whole definition of a delete candidate. A new reason to keep mail goes there, with a test that it keeps on its own.
+
 ## Dev
 - `uv venv && uv pip install -e '.[dev]'`, `.venv/bin/pytest -q`
 - Secrets and the owner's profile live in `~/.config/gmail-triage/` (token.json, client_secret.json, .env, profile.toml) — never in the repo. `config/config.toml` is local and gitignored; the committed one is `config.example.toml`.
