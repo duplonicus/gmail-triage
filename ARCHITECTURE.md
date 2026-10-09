@@ -36,36 +36,19 @@ What leaves the machine: for each message, the From and Subject headers, the Lis
 
 What actually runs. It is one Python process under systemd, plus a short-lived `claude` child process per classifier call when the `cli` backend is used.
 
-```mermaid
-flowchart TB
-    subgraph machine["Owner's Linux machine"]
-        systemd["systemd user service<br/>Type=notify, watchdog 120 s"]
-        subgraph proc["Python process: python -m gmail_triage"]
-            loop["Main loop, one thread<br/>debounce, sync, watch renewal"]
-            sub["Pub/Sub client threads<br/>callback: enqueue and ack"]
-            q[["In-memory queue"]]
-        end
-        cli["claude -p child process<br/>one per classifier call"]
-        state[("state.json<br/>historyId cursor")]
-        tlog[("logs/triage.log<br/>one line per message")]
-        cfg[/"config/config.toml"/]
-        secrets[/"~/.config/gmail-triage<br/>token, client secret, profile, API key"/]
-    end
-    gmail[Gmail API]
-    pubsub[Pub/Sub]
-    anthropic[Anthropic]
+| Piece | What it is |
+|---|---|
+| systemd user service | Starts and restarts the process. `Type=notify`, watchdog 120 s |
+| Python process (`python -m gmail_triage`) | The whole service |
+| Main loop, one thread | Inside the process. Debounce, sync, watch renewal. Pings the watchdog about every second |
+| Pub/Sub client threads | Inside the process. Their callback puts each notification on an in-memory queue and acks it. The main loop reads the queue |
+| `claude -p` child process | One per classifier call, `cli` backend only. The `api` backend calls Anthropic directly instead |
+| `state.json` | The `historyId` cursor |
+| `logs/triage.log` | One line per message |
+| `config/config.toml` | Settings, read at startup |
+| `~/.config/gmail-triage` | Token, client secret, profile, API key |
 
-    systemd -- "starts, restarts" --> proc
-    loop -- "WATCHDOG=1 about every second" --> systemd
-    pubsub --> sub --> q --> loop
-    loop --> gmail
-    loop --> cli --> anthropic
-    loop -. "api backend instead" .-> anthropic
-    loop --> state
-    loop --> tlog
-    cfg --> loop
-    secrets --> loop
-```
+Everything in the table is on the owner's Linux machine. Outside it are the Gmail API, Pub/Sub and Anthropic.
 
 ## Tech stack
 
@@ -86,29 +69,17 @@ flowchart TB
 
 This is the product.
 
-```mermaid
-sequenceDiagram
-    participant G as Gmail
-    participant P as Pub/Sub
-    participant D as Daemon
-    participant S as state.json
-    participant H as Haiku
-
-    G->>P: publish notification (inbox changed)
-    P->>D: streaming pull delivers it
-    D->>P: ack at once
-    Note over D: wait 5 s for more notifications
-    D->>S: read saved historyId
-    D->>G: history.list since that id (messageAdded, INBOX)
-    G-->>D: new message ids and the newest historyId
-    D->>G: messages.get format=metadata, per message
-    Note over D: drop mail that is not in the inbox, is spam, trash or draft, or already has a triage label
-    D->>H: rules and profile, then up to 20 messages as JSON
-    H-->>D: JSON array of id, labels, star, reason
-    Note over D: validate, then settle star, important and archive in code
-    D->>G: messages.modify, one call per message
-    D->>S: write the newest historyId
-```
+1. Gmail publishes a notification to Pub/Sub: the inbox changed.
+2. The streaming pull delivers it to the daemon, which acks it at once.
+3. The daemon waits 5 s for more notifications.
+4. It reads the saved `historyId` from `state.json`.
+5. It asks Gmail for `history.list` since that id (`messageAdded`, `INBOX`). Gmail answers with the new message ids and the newest `historyId`.
+6. It calls `messages.get` with `format=metadata` for each message.
+7. It drops mail that is not in the inbox, is spam, trash or draft, or already has a triage label.
+8. It sends Haiku the rules and profile, then up to 20 messages as JSON. Haiku answers with a JSON array of id, labels, star and reason.
+9. It validates the answer, then settles star, important and archive in code.
+10. It calls `messages.modify`, once per message.
+11. It writes the newest `historyId` to `state.json`.
 
 The notification is only a wake-up. It is acknowledged immediately and its content is not used. The saved `historyId` is the cursor: each sync asks Gmail for everything added to the inbox since that id, and the id moves forward only after the whole batch is processed.
 
@@ -286,32 +257,12 @@ The label set is code, not data: `classifier.PRIMARY` (29 labels) plus `Security
 
 Three tools for the mail that was already there before the daemon. They share the Gmail client and the OAuth token with the daemon but none of its write path.
 
-```mermaid
-flowchart TB
-    gmail[(Gmail)]
-    subgraph backup["gmail-triage-backup (read-only)"]
-        list[List all ids] --> pace[Pacer: 120 a minute<br/>across 4 threads]
-        pace --> raw[messages.get format=raw]
-        raw --> eml[Write .eml atomically]
-        eml --> idx[Append row to index.jsonl]
-    end
-    subgraph census["gmail-triage-census (offline)"]
-        keep[keep_reasons per message] --> rep[census.md and senders.csv]
-    end
-    owner([Owner picks senders<br/>into an approved file])
-    subgraph cleanup["gmail-triage-cleanup"]
-        plan[Build the plan] --> report{--apply?}
-        report -- no --> out([Report only])
-        report -- yes --> rf[Write restore file first]
-        rf --> bm[batchModify, 1,000 ids a call]
-    end
+How they chain together:
 
-    gmail --> list
-    idx --> keep
-    rep --> owner --> plan
-    idx --> plan
-    bm --> gmail
-```
+1. `gmail-triage-backup` (read-only) lists every message id, downloads each one raw, writes it as an `.eml`, then appends a row to `index.jsonl`.
+2. `gmail-triage-census` (offline) reads that index and writes `census.md` and `senders.csv`.
+3. The owner reads the report and puts the senders they approve into a file.
+4. `gmail-triage-cleanup` builds a plan from the index and that file. Without `--apply` it only reports. With `--apply` it writes the restore file first, then changes Gmail with `batchModify`, 1,000 ids a call.
 
 **Backup.** Four worker threads, each with its own Gmail client because `httplib2` connections are not thread-safe. A shared `Pacer` spaces the calls so the total stays at 120 a minute. A 403 or 429 is waited out (30 s, up to 10 times) instead of failing. A message counts as done only when its row is in `index.jsonl`, and the row is written after the `.eml` is on disk, so re-running the command fetches only what is missing. `complete.json` is deleted at the start of a run and written last.
 
@@ -337,23 +288,19 @@ The report also runs a star check: starred messages that every other rule would 
 
 There is no build, image or pipeline. The service runs straight from a git checkout on the owner's machine.
 
-```mermaid
-flowchart LR
-    subgraph once["One time"]
-        gc[setup_gcloud.sh<br/>project, APIs, budget,<br/>topic, pull subscription]
-        oauth[OAuth client in Cloud Console,<br/>then gmail-triage-auth]
-        dry[Dry run with backfill,<br/>read triage.log]
-        inst[install_service.sh<br/>writes the unit file]
-        gc --> oauth --> dry --> inst
-    end
-    subgraph change["Every change"]
-        edit[Edit and commit] --> test[pytest, 267 cases]
-        test --> restart[systemctl --user restart]
-    end
-    inst --> en[systemctl --user enable --now]
-    en --> live([Running service])
-    restart --> live
-```
+One time:
+
+1. `setup_gcloud.sh` creates the project, APIs, budget, topic and pull subscription.
+2. Create an OAuth client in the Cloud Console, then run `gmail-triage-auth`.
+3. Do a dry run with backfill and read `triage.log`.
+4. `install_service.sh` writes the unit file.
+5. `systemctl --user enable --now` starts the service.
+
+Every change:
+
+1. Edit and commit.
+2. Run pytest (267 cases).
+3. `systemctl --user restart`.
 
 - The unit runs `.venv/bin/python -m gmail_triage` from the checkout, with an editable install. The running code is whatever is checked out when the service starts.
 - `install_service.sh` fills the checkout path into `systemd/gmail-triage.service.in` and writes the unit to the user's systemd directory.
