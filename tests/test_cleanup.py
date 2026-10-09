@@ -223,6 +223,25 @@ def test_people_only_takes_every_automated_message_and_keeps_the_rest():
     assert K.plan_trash(rows, WIDE_NAMES, set(), set(), set())["ids"] == []
 
 
+def test_drop_and_chats_remove_only_the_person_reason():
+    ann = "Ann <ann@gmail.com>"
+    rows = [
+        auto("mail", sender=ann),
+        auto("chat", sender=ann, labels=("CHAT",)),
+        auto("photo_doc", sender=ann, attachments=["scan.pdf"]),      # dropped sender, but a document
+        auto("starred", sender=ann, labels=("CHAT", "STARRED")),
+        auto("bo", sender="Bo <bo@gmail.com>"),
+        auto("bo_chat", sender="Bo <bo@gmail.com>", labels=("CHAT",)),
+    ]
+    plan = lambda **kw: K.plan_trash(rows, WIDE_NAMES, set(), set(), set(), people_only=True, **kw)["ids"]
+    assert plan() == []
+    assert plan(chats=True) == ["chat", "bo_chat"]
+    assert plan(drop={"ann@gmail.com"}) == ["mail", "chat"]
+    assert plan(drop={"ann@gmail.com"}, chats=True) == ["mail", "chat", "bo_chat"]
+    # outside people-only mode they do nothing
+    assert K.plan_trash(rows, WIDE_NAMES, set(), set(), set(), drop={"ann@gmail.com"}, chats=True)["ids"] == []
+
+
 def test_people_only_still_obeys_keep_list_cutoff_and_live_stars():
     rows = [auto("a"), auto("b", sender="Reg <noreply@registrar.example>"), auto("c"), auto("d")]
     rows[2]["internal_date"] = 5000

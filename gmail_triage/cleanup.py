@@ -72,7 +72,8 @@ def is_kept_sender(who: str, keep: set[str] | frozenset[str]) -> bool:
 def plan_trash(rows: list[dict], label_names: dict[str, str], approved: set[str],
                starred_now: set[str], inbox_now: set[str],
                wide: frozenset[str] | set[str] = frozenset(), before_ms: int | None = None,
-               keep: frozenset[str] | set[str] = frozenset(), people_only: bool = False) -> dict:
+               keep: frozenset[str] | set[str] = frozenset(), people_only: bool = False,
+               drop: frozenset[str] | set[str] = frozenset(), chats: bool = False) -> dict:
     """Delete candidates from approved senders. `starred_now` is the live
     starred set, so a star added after the backup still protects.
 
@@ -82,6 +83,8 @@ def plan_trash(rows: list[dict], label_names: dict[str, str], approved: set[str]
 
     `people_only` switches to keep_reasons_people(): every sender is in
     scope and only mail a person wrote (or the other reasons there) stays.
+    There, senders in `drop` are not treated as people, and with `chats`
+    neither are saved chat logs (Gmail's CHAT label).
     """
     replied = replied_threads(rows)
     ids = []
@@ -93,7 +96,11 @@ def plan_trash(rows: list[dict], label_names: dict[str, str], approved: set[str]
             continue
         if before_ms is not None and r["internal_date"] >= before_ms:
             continue
-        why = keep_reasons_people(r, label_names, replied) if people_only else keep_reasons(r, label_names, replied, wide=who in wide)
+        if people_only:
+            dropped = who in drop or (chats and "CHAT" in r["labels"])
+            why = keep_reasons_people(r, label_names, replied, as_person=not dropped)
+        else:
+            why = keep_reasons(r, label_names, replied, wide=who in wide)
         if not why:
             ids.append(r["id"])
     return {"action": "trash", "ids": ids, "inbox": sorted(set(ids) & inbox_now)}
@@ -138,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--senders", type=Path, help="file of approved sender addresses")
     t.add_argument("--people-only", action="store_true",
                    help="trash all automated mail, from any sender; keep what people wrote")
+    t.add_argument("--drop", type=Path, help="with --people-only: senders whose mail goes although a person may have written it")
+    t.add_argument("--chats", action="store_true", help="with --people-only: saved chat logs go too")
     t.add_argument("--wide-senders", type=Path, help="file of pure-bulk senders (newsletters, job alerts): "
                    "their bulk mail goes whatever Gmail tab it is in")
     t.add_argument("--older-than", type=parse_days, metavar="30d", help="leave mail newer than this alone")
@@ -173,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         before = int((time.time() - args.older_than * 86400) * 1000) if args.older_than else None
         plan = plan_trash(rows, names, approved, set(G.list_ids(svc, "is:starred")), set(G.list_ids(svc, "in:inbox")),
                           wide=wide, before_ms=before, keep=read_senders(args.keep) if args.keep else set(),
-                          people_only=args.people_only)
+                          people_only=args.people_only, chats=args.chats,
+                          drop=read_senders(args.drop) if args.drop else set())
         by_id = {r["id"]: r for r in rows}
         log.info("trash: %d messages, %.1f MB, from %d approved and %d wide senders", len(plan["ids"]),
                  sum(by_id[i]["size"] for i in plan["ids"]) / 1e6, len(approved), len(wide))

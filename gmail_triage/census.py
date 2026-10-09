@@ -109,20 +109,22 @@ def is_person(row: dict) -> bool:
     return not _ROBOT.search(local) and categories <= {"CATEGORY_PERSONAL"}
 
 
-def keep_reasons_people(row: dict, label_names: dict[str, str], replied: set[str]) -> list[str]:
+def keep_reasons_people(row: dict, label_names: dict[str, str], replied: set[str],
+                        as_person: bool = True) -> list[str]:
     """The stricter policy: automated mail goes, mail from people stays.
 
     Empty list = delete candidate. Unlike keep_reasons(), being bulk or in a
     particular Gmail tab is not needed to be a candidate: anything a person
     did not write is one, unless it is the owner's own mail, in a thread they
     wrote in, starred, carries a document, or has a triage label that is not
-    a junk one.
+    a junk one. `as_person=False` withholds the "person" reason, for mail
+    the owner said to drop anyway; the other reasons still hold.
     """
     labels = set(row["labels"])
     reasons = []
     if labels & {"SENT", "DRAFT"}:
         reasons.append("yours")
-    if is_person(row):
+    if as_person and is_person(row):
         reasons.append("person")
     if has_document(row):
         reasons.append("document")

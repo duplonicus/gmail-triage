@@ -263,6 +263,8 @@ from any sender, and what stays is mail a person wrote, your own mail and the
 threads you wrote in, starred mail, anything with a document attached, and
 mail with a non-junk triage label. "A person wrote it" is a guess from the
 sender's address and Gmail's tab; put anything you cannot lose in `--keep`.
+`--drop drop.txt` names senders whose mail goes even though it looks personal,
+and `--chats` lets saved chat logs go.
 
 `approved.txt` is one sender address a line, picked from `senders.csv`.
 `--wide-senders wide.txt` names senders that are nothing but newsletters or
