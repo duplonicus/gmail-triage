@@ -259,6 +259,11 @@ written to `~/.config/gmail-triage/backups/` before anything changes.
 empties Trash after 30 days, which is when the storage is freed. Archiving
 frees none: archived mail stays in All Mail.
 
+**This changes your real mailbox, at your own risk.** Run the backup first,
+read the report before adding `--apply`, and keep the restore file. Mail that
+Gmail has emptied from Trash cannot be restored by this tool, only re-imported
+from your backup by hand.
+
 ## Failure behaviour
 
 - Hung anywhere (socket, `claude` subprocess) → no `WATCHDOG=1` for 120 s → systemd kills and restarts it.
@@ -277,4 +282,5 @@ invariants the tests enforce.
 
 ## Licence
 
-[MIT](LICENSE).
+[MIT](LICENSE). The software is provided as is, with no warranty: the authors
+are not responsible for lost, mislabelled, archived or deleted mail.
