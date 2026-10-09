@@ -15,6 +15,7 @@ import argparse
 import csv
 import email.utils
 import json
+import re
 import sys
 import time
 from collections import Counter, defaultdict
@@ -30,6 +31,24 @@ JUNK_LABELS = {"Promos", "Newsletters"}
 WIDE_JUNK_LABELS = {"Jobs › Alerts", "Jobs › Skip", "Notifications"}
 # A named attachment that is not a picture counts as a document.
 IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "tif", "tiff", "heic"}
+
+
+# Mail providers people write from. A sender here is a person unless the
+# message is bulk.
+PERSONAL_DOMAINS = {
+    "gmail.com", "googlemail.com", "hotmail.com", "hotmail.ca", "outlook.com", "outlook.ca", "live.com", "live.ca",
+    "msn.com", "yahoo.com", "yahoo.ca", "ymail.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me",
+    "protonmail.com", "gmx.com", "mail.com", "rogers.com", "bell.net", "sympatico.ca", "cogeco.ca", "shaw.ca",
+    "telus.net",
+}
+# Mailbox names that are machines or departments, as a whole word of the local part.
+_ROBOT = re.compile(
+    r"(^|[._+-])(no[._-]?reply|do[._-]?not[._-]?reply|dontreply|donotreply|nepasrepondre|notif\w*|alerts?|news\w*|"
+    r"info|mailer|bounce\w*|updates?|marketing|promo\w*|digest|auto\w*|system|service|support|help|team|hello|hi|"
+    r"billing|receipts?|orders?|account\w*|security|admin|member\w*|rewards?|offers?|deals?|sales|contact|"
+    r"feedback|survey\w*|welcome|jobs?|careers?|recruit\w*|shipment\w*|tracking|estatement\w*|statements?|"
+    r"invoice\w*|verify|verification|confirm\w*|reminders?|postmaster|mailbox|communications?|customer\w*|"
+    r"messages?|invitations?|invite\w*|store|shop|id|registrar|community|events?)([._+-]|$)", re.I)
 
 
 def sender(row: dict) -> str:
@@ -72,6 +91,46 @@ def keep_reasons(row: dict, label_names: dict[str, str], replied: set[str], igno
     if "STARRED" in labels and not ignore_star:
         reasons.append("starred")
     junk = (lambda n: is_junk_label(n) or n in WIDE_JUNK_LABELS) if wide else is_junk_label
+    if any(not junk(label_names.get(l, l)) for l in labels if l.startswith("Label_")):
+        reasons.append("labelled")
+    return reasons
+
+
+def is_person(row: dict) -> bool:
+    """A best guess that a human wrote this: not bulk, and either from a
+    personal mail provider, or from a mailbox that is not named like a machine
+    and that Gmail did not file under Updates, Promotions, Social or Forums."""
+    if row.get("list_unsubscribe"):
+        return False
+    local, _, domain = sender(row).partition("@")
+    if domain in PERSONAL_DOMAINS:
+        return True
+    categories = {l for l in row["labels"] if l.startswith("CATEGORY_")}
+    return not _ROBOT.search(local) and categories <= {"CATEGORY_PERSONAL"}
+
+
+def keep_reasons_people(row: dict, label_names: dict[str, str], replied: set[str]) -> list[str]:
+    """The stricter policy: automated mail goes, mail from people stays.
+
+    Empty list = delete candidate. Unlike keep_reasons(), being bulk or in a
+    particular Gmail tab is not needed to be a candidate: anything a person
+    did not write is one, unless it is the owner's own mail, in a thread they
+    wrote in, starred, carries a document, or has a triage label that is not
+    a junk one.
+    """
+    labels = set(row["labels"])
+    reasons = []
+    if labels & {"SENT", "DRAFT"}:
+        reasons.append("yours")
+    if is_person(row):
+        reasons.append("person")
+    if has_document(row):
+        reasons.append("document")
+    if row["thread"] in replied:
+        reasons.append("replied")
+    if "STARRED" in labels:
+        reasons.append("starred")
+    junk = lambda n: is_junk_label(n) or n in WIDE_JUNK_LABELS
     if any(not junk(label_names.get(l, l)) for l in labels if l.startswith("Label_")):
         reasons.append("labelled")
     return reasons

@@ -258,6 +258,12 @@ written to `~/.config/gmail-triage/backups/` before anything changes.
 | `.venv/bin/gmail-triage-cleanup trash ~/backup/gmail --senders approved.txt` | move the census's delete candidates to Trash, only for the senders you list |
 | `.venv/bin/gmail-triage-cleanup restore <restore file>` | undo one of the above |
 
+`trash --people-only` is the blunt version: every automated message goes,
+from any sender, and what stays is mail a person wrote, your own mail and the
+threads you wrote in, starred mail, anything with a document attached, and
+mail with a non-junk triage label. "A person wrote it" is a guess from the
+sender's address and Gmail's tab; put anything you cannot lose in `--keep`.
+
 `approved.txt` is one sender address a line, picked from `senders.csv`.
 `--wide-senders wide.txt` names senders that are nothing but newsletters or
 job alerts: their bulk mail goes even from the Updates tab, where receipts and

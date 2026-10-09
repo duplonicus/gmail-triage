@@ -177,6 +177,61 @@ def test_keep_list_beats_approved_and_wide():
     assert K.plan_trash(rows, WIDE_NAMES, approved, set(), set(), wide=wide, keep=keep)["ids"] == []
 
 
+# people only -------------------------------------------------------------------
+
+def auto(mid, sender="Shop <noreply@shop.example>", labels=("CATEGORY_UPDATES", "INBOX"), unsubscribe=False, **kw):
+    return row(mid, sender=sender, labels=labels, unsubscribe=unsubscribe, **kw)
+
+
+@pytest.mark.parametrize("r, person", [
+    (auto("a", sender="Ann <ann@gmail.com>"), True),                                    # personal provider, any tab
+    (auto("a", sender="Ann <ann@gmail.com>", unsubscribe=True), False),                 # ...but not a mailing
+    (auto("a", sender="Bo <bo.lee@firm.example>", labels=("CATEGORY_PERSONAL",)), True),
+    (auto("a", sender="Bo <bo.lee@firm.example>", labels=("INBOX",)), True),            # no tab at all
+    (auto("a", sender="Bo <bo.lee@firm.example>"), False),                              # Gmail filed it under Updates
+    (auto("a", sender="Firm <noreply@firm.example>", labels=("CATEGORY_PERSONAL",)), False),
+    (auto("a", sender="Firm <no-reply@firm.example>", labels=("CATEGORY_PERSONAL",)), False),
+    (auto("a", sender="Firm <billing.team@firm.example>", labels=("CATEGORY_PERSONAL",)), False),
+    (auto("a", sender="Firm <alerts+x1@firm.example>", labels=("CATEGORY_PERSONAL",)), False),
+    (auto("a", sender="Sid <sidney@firm.example>", labels=("CATEGORY_PERSONAL",)), True),   # "id" only as a whole word
+    (auto("a", sender="Al <alhelper@firm.example>", labels=("CATEGORY_PERSONAL",)), True),  # "help" only as a whole word
+])
+def test_is_person(r, person):
+    assert C.is_person(r) is person
+
+
+def test_people_only_takes_every_automated_message_and_keeps_the_rest():
+    rows = [
+        auto("notice"),                                                       # no unsubscribe, Updates tab: goes
+        auto("promo", labels=("CATEGORY_PROMOTIONS",), unsubscribe=True),     # goes
+        auto("alert", labels=("CATEGORY_UPDATES", "Label_4")),                # junk label: goes
+        auto("friend", sender="Ann <ann@gmail.com>"),
+        auto("colleague", sender="Bo <bo.lee@firm.example>", labels=("CATEGORY_PERSONAL",)),
+        auto("contract", attachments=["contract.pdf"]),
+        auto("starred", labels=("CATEGORY_UPDATES", "STARRED")),
+        auto("receipt", labels=("CATEGORY_UPDATES", "Label_2")),
+        auto("thread", thread="t1"),
+        auto("mine", labels=("SENT",), thread="t1"),
+    ]
+    plan = K.plan_trash(rows, WIDE_NAMES, set(), set(), set(), people_only=True)
+    assert plan["ids"] == ["notice", "promo", "alert"]
+    replied = C.replied_threads(rows)
+    kept = {r["id"]: C.keep_reasons_people(r, WIDE_NAMES, replied) for r in rows if r["id"] not in plan["ids"]}
+    assert kept == {"friend": ["person"], "colleague": ["person"], "contract": ["document"], "starred": ["starred"],
+                    "receipt": ["labelled"], "thread": ["replied"], "mine": ["yours", "replied"]}
+    # without the switch, no sender is approved, so nothing goes
+    assert K.plan_trash(rows, WIDE_NAMES, set(), set(), set())["ids"] == []
+
+
+def test_people_only_still_obeys_keep_list_cutoff_and_live_stars():
+    rows = [auto("a"), auto("b", sender="Reg <noreply@registrar.example>"), auto("c"), auto("d")]
+    rows[2]["internal_date"] = 5000
+    plan = K.plan_trash(rows, WIDE_NAMES, set(), {"d"}, set(), people_only=True,
+                        keep={"@registrar.example"}, before_ms=row()["internal_date"] + 1)
+    assert plan["ids"] == ["a", "c"]
+    assert K.plan_trash(rows, WIDE_NAMES, set(), {"d"}, set(), people_only=True, before_ms=5001)["ids"] == ["c"]
+
+
 def test_age_cutoff_keeps_mail_at_or_after_it():
     rows = [row("old"), row("edge"), row("new")]
     rows[0]["internal_date"], rows[1]["internal_date"], rows[2]["internal_date"] = 999, 1000, 1001

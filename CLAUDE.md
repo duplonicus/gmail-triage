@@ -16,7 +16,7 @@ Gmail watch → Pub/Sub pull → Haiku → labels/stars/important. Setup and ops
 - Both are read-only: the backup only calls `messages.list`/`get`, the census only reads the backup directory. Neither goes through `gmail.apply()`.
 - The backup is paced under the per-user quota (`PER_MINUTE`) because the daemon shares it. An index row is written only after its `.eml` is on disk; `complete.json` is written last.
 - `cleanup.py` is the only code that archives in bulk, marks read or trashes, and only when the owner runs it with `--apply`. Its changes are the fixed bodies in `cleanup.ALLOWED` (INBOX, UNREAD and TRASH only); the restore file is written before the first change. The daemon's invariants above are unchanged.
-- `census.keep_reasons()` is the whole definition of a delete candidate. A new reason to keep mail goes there, with a test that it keeps on its own.
+- `census.keep_reasons()` (by approved sender) and `census.keep_reasons_people()` (`--people-only`) are the whole definition of a delete candidate. A new reason to keep mail goes there, with a test that it keeps on its own.
 
 ## Dev
 - `uv venv && uv pip install -e '.[dev]'`, `.venv/bin/pytest -q`

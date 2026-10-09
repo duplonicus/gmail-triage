@@ -1,6 +1,7 @@
 """One-off mailbox cleanup, run by the owner by hand. The daemon never does this.
 
     gmail-triage-cleanup archive --older-than 30d [--mark-read] [--apply]
+    gmail-triage-cleanup trash BACKUP_DIR --people-only --older-than 30d --keep keep.txt [--apply]
     gmail-triage-cleanup trash BACKUP_DIR --senders approved.txt
                                [--wide-senders wide.txt] [--older-than 30d] [--keep keep.txt] [--apply]
     gmail-triage-cleanup restore RESTORE_FILE
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from . import gmail as G
 from .backup import LABELS, read_index
-from .census import keep_reasons, replied_threads, sender
+from .census import keep_reasons, keep_reasons_people, replied_threads, sender
 from .config import SECRETS_DIR
 from .daemon import parse_days
 
@@ -71,25 +72,29 @@ def is_kept_sender(who: str, keep: set[str] | frozenset[str]) -> bool:
 def plan_trash(rows: list[dict], label_names: dict[str, str], approved: set[str],
                starred_now: set[str], inbox_now: set[str],
                wide: frozenset[str] | set[str] = frozenset(), before_ms: int | None = None,
-               keep: frozenset[str] | set[str] = frozenset()) -> dict:
+               keep: frozenset[str] | set[str] = frozenset(), people_only: bool = False) -> dict:
     """Delete candidates from approved senders. `starred_now` is the live
     starred set, so a star added after the backup still protects.
 
     Senders in `wide` are judged with keep_reasons(wide=True). With
     `before_ms`, only mail received before that moment is taken. A sender
     matching `keep` is never trashed, whatever the other lists say.
+
+    `people_only` switches to keep_reasons_people(): every sender is in
+    scope and only mail a person wrote (or the other reasons there) stays.
     """
     replied = replied_threads(rows)
     ids = []
     for r in rows:
         who = sender(r)
-        if (who not in approved and who not in wide) or is_kept_sender(who, keep):
+        if is_kept_sender(who, keep) or not (people_only or who in approved or who in wide):
             continue
         if r["id"] in starred_now or "TRASH" in r["labels"]:
             continue
         if before_ms is not None and r["internal_date"] >= before_ms:
             continue
-        if not keep_reasons(r, label_names, replied, wide=who in wide):
+        why = keep_reasons_people(r, label_names, replied) if people_only else keep_reasons(r, label_names, replied, wide=who in wide)
+        if not why:
             ids.append(r["id"])
     return {"action": "trash", "ids": ids, "inbox": sorted(set(ids) & inbox_now)}
 
@@ -130,7 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--mark-read", action="store_true", help="also mark the archived mail read")
     t = sub.add_parser("trash")
     t.add_argument("backup", type=Path, help="a directory written by gmail-triage-backup")
-    t.add_argument("--senders", type=Path, required=True, help="file of approved sender addresses")
+    t.add_argument("--senders", type=Path, help="file of approved sender addresses")
+    t.add_argument("--people-only", action="store_true",
+                   help="trash all automated mail, from any sender; keep what people wrote")
     t.add_argument("--wide-senders", type=Path, help="file of pure-bulk senders (newsletters, job alerts): "
                    "their bulk mail goes whatever Gmail tab it is in")
     t.add_argument("--older-than", type=parse_days, metavar="30d", help="leave mail newer than this alone")
@@ -159,11 +166,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         rows = read_index(args.backup)
         names = json.loads((args.backup / LABELS).read_text(encoding="utf-8"))
-        approved = read_senders(args.senders)
+        if not args.senders and not args.people_only:
+            ap.error("trash needs --senders or --people-only")
+        approved = read_senders(args.senders) if args.senders else set()
         wide = read_senders(args.wide_senders) if args.wide_senders else set()
         before = int((time.time() - args.older_than * 86400) * 1000) if args.older_than else None
         plan = plan_trash(rows, names, approved, set(G.list_ids(svc, "is:starred")), set(G.list_ids(svc, "in:inbox")),
-                          wide=wide, before_ms=before, keep=read_senders(args.keep) if args.keep else set())
+                          wide=wide, before_ms=before, keep=read_senders(args.keep) if args.keep else set(),
+                          people_only=args.people_only)
         by_id = {r["id"]: r for r in rows}
         log.info("trash: %d messages, %.1f MB, from %d approved and %d wide senders", len(plan["ids"]),
                  sum(by_id[i]["size"] for i in plan["ids"]) / 1e6, len(approved), len(wide))
