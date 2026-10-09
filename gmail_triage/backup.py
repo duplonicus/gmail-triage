@@ -38,10 +38,12 @@ INDEX = "index.jsonl"
 LABELS = "labels.json"
 COMPLETE = "complete.json"
 WORKERS = 4
-# Gmail allows 6,000 quota units a minute per user and messages.get costs 20
-# (developers.google.com/workspace/gmail/api/reference/quota, read 2026-10-08):
-# 300 a minute at most. Stay under it so a running daemon keeps its share.
-PER_MINUTE = 270
+# Gmail's quota page says 6,000 units a minute per user at 20 a messages.get,
+# i.e. 300 a minute (developers.google.com/workspace/gmail/api/reference/quota,
+# read 2026-10-08). Measured the same day with format=raw: rateLimitExceeded
+# from about 130 a minute. Stay under what was measured, so a running daemon
+# keeps its share of the allowance.
+PER_MINUTE = 120
 RATE_LIMIT_WAITS = 10
 # A 25 MB message is ~35 MB of base64 in one response.
 TIMEOUT = 180
@@ -203,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dest", type=Path, help="directory to back up into")
     ap.add_argument("--query", default="", help="Gmail search to limit the backup (default: all mail)")
+    ap.add_argument("--per-minute", type=float, default=PER_MINUTE, help=f"messages fetched a minute (default {PER_MINUTE})")
     ap.add_argument("--force", action="store_true", help="refetch everything, ignoring what is already there")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
@@ -222,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     # httplib2 connections are not thread-safe: one client per worker thread.
     local = threading.local()
 
-    pacer = Pacer(PER_MINUTE)
+    pacer = Pacer(args.per_minute)
 
     def fetch(mid: str):
         if not hasattr(local, "svc"):

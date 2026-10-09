@@ -228,8 +228,9 @@ Stop the service before running the CLI by hand against real state, or use
 `.eml` file plus an `index.jsonl` row with its labels, size, sender and
 attachment names. It only reads from Gmail.
 
-- It is paced at 270 messages a minute, because Gmail's per-user quota allows
-  300. A mailbox of 25,000 takes about an hour and a half.
+- It is paced at 120 messages a minute (`--per-minute`), because Gmail starts
+  refusing raw downloads a little above that. A mailbox of 25,000 takes about
+  three and a half hours.
 - It is resumable: run the same command again and it fetches only what is
   missing. `complete.json` appears when a run finishes. `--force` starts over.
 - `--query "newer_than:30d"` limits it to a Gmail search.
