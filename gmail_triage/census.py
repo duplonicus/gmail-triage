@@ -25,6 +25,9 @@ from .backup import LABELS, read_index
 JUNK_CATEGORIES = {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL"}
 # Triage labels that do not make a message worth keeping.
 JUNK_LABELS = {"Promos", "Newsletters"}
+# For a sender the owner has named as pure bulk (newsletters, job alerts),
+# these labels do not make a message worth keeping either.
+WIDE_JUNK_LABELS = {"Jobs › Alerts", "Jobs › Skip", "Notifications"}
 # A named attachment that is not a picture counts as a document.
 IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "tif", "tiff", "heic"}
 
@@ -46,15 +49,21 @@ def replied_threads(rows: list[dict]) -> set[str]:
     return {r["thread"] for r in rows if "SENT" in r["labels"]}
 
 
-def keep_reasons(row: dict, label_names: dict[str, str], replied: set[str], ignore_star: bool = False) -> list[str]:
-    """Why this message must stay. Empty list = delete candidate."""
+def keep_reasons(row: dict, label_names: dict[str, str], replied: set[str], ignore_star: bool = False,
+                 wide: bool = False) -> list[str]:
+    """Why this message must stay. Empty list = delete candidate.
+
+    `wide` is for a sender the owner named as pure bulk: the Gmail tab no
+    longer matters and WIDE_JUNK_LABELS stop protecting. Every other reason
+    (not bulk, a document, a reply, a star) holds exactly as before.
+    """
     labels = set(row["labels"])
     reasons = []
     if labels & {"SENT", "DRAFT"}:
         reasons.append("yours")
     if not row.get("list_unsubscribe"):
         reasons.append("not bulk")
-    if not labels & JUNK_CATEGORIES:
+    if not wide and not labels & JUNK_CATEGORIES:
         reasons.append("category")
     if has_document(row):
         reasons.append("document")
@@ -62,7 +71,8 @@ def keep_reasons(row: dict, label_names: dict[str, str], replied: set[str], igno
         reasons.append("replied")
     if "STARRED" in labels and not ignore_star:
         reasons.append("starred")
-    if any(not is_junk_label(label_names.get(l, l)) for l in labels if l.startswith("Label_")):
+    junk = (lambda n: is_junk_label(n) or n in WIDE_JUNK_LABELS) if wide else is_junk_label
+    if any(not junk(label_names.get(l, l)) for l in labels if l.startswith("Label_")):
         reasons.append("labelled")
     return reasons
 

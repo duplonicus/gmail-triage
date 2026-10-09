@@ -123,6 +123,67 @@ def test_plan_trash_is_exactly_the_census_candidates_of_approved_senders():
     assert all(C.keep_reasons(by_id[i], NAMES, replied) == [] for i in plan["ids"])
 
 
+WIDE_NAMES = {**NAMES, "Label_4": "Jobs › Alerts", "Label_5": "Jobs › Interview", "Label_6": "Notifications"}
+JOBS = "Jobs <alerts@jobs.example>"
+
+
+def wide_row(mid, labels=("CATEGORY_UPDATES", "INBOX"), **kw):
+    return row(mid, labels=labels, sender=JOBS, **kw)
+
+
+def test_wide_sender_loses_only_the_tab_and_alert_label_protection():
+    rows = [
+        wide_row("updates"),                                             # Updates tab: goes
+        wide_row("no_tab", labels=("INBOX",)),                           # no category at all: goes
+        wide_row("alert", labels=("CATEGORY_UPDATES", "Label_4")),       # labelled Jobs › Alerts: goes
+        wide_row("notif", labels=("CATEGORY_UPDATES", "Label_6")),       # labelled Notifications: goes
+        wide_row("interview", labels=("CATEGORY_UPDATES", "Label_5")),   # a real label still keeps
+        wide_row("receipt", labels=("CATEGORY_UPDATES", "Label_2")),
+        wide_row("not_bulk", unsubscribe=False),
+        wide_row("doc", attachments=["offer.pdf"]),
+        wide_row("starred", labels=("CATEGORY_UPDATES", "STARRED")),
+        wide_row("thread", thread="t9"),
+        wide_row("mine", labels=("SENT",), thread="t9", unsubscribe=False),
+    ]
+    wide = {"alerts@jobs.example"}
+    plan = K.plan_trash(rows, WIDE_NAMES, set(), set(), set(), wide=wide)
+    assert plan["ids"] == ["updates", "no_tab", "alert", "notif"]
+    # the same sender merely approved, not wide, loses nothing outside Promotions/Social
+    assert K.plan_trash(rows, WIDE_NAMES, wide, set(), set())["ids"] == []
+
+
+def test_wide_does_not_leak_to_other_senders():
+    rows = [wide_row("w"), row("other", labels=("CATEGORY_UPDATES",))]
+    plan = K.plan_trash(rows, WIDE_NAMES, {"deals@shop.example"}, set(), set(), wide={"alerts@jobs.example"})
+    assert plan["ids"] == ["w"]
+
+
+@pytest.mark.parametrize("who, kept", [
+    ("id@proxy.example", True),            # exact address
+    ("a.b@mail.registrar.example", True),  # subdomain of a kept domain
+    ("x@registrar.example", True),
+    ("x@notregistrar.example", False),     # a suffix that is not a subdomain
+    ("other@proxy.example", False),        # address entries do not cover the domain
+])
+def test_keep_list_matches_addresses_and_domains(who, kept):
+    assert K.is_kept_sender(who, {"id@proxy.example", "@registrar.example"}) is kept
+
+
+def test_keep_list_beats_approved_and_wide():
+    rows = [row("a"), wide_row("b"), row("c", sender="Reg <x@mail.registrar.example>")]
+    approved, wide = {"deals@shop.example", "x@mail.registrar.example"}, {"alerts@jobs.example"}
+    assert K.plan_trash(rows, WIDE_NAMES, approved, set(), set(), wide=wide)["ids"] == ["a", "b", "c"]
+    keep = {"deals@shop.example", "@jobs.example", "@registrar.example"}
+    assert K.plan_trash(rows, WIDE_NAMES, approved, set(), set(), wide=wide, keep=keep)["ids"] == []
+
+
+def test_age_cutoff_keeps_mail_at_or_after_it():
+    rows = [row("old"), row("edge"), row("new")]
+    rows[0]["internal_date"], rows[1]["internal_date"], rows[2]["internal_date"] = 999, 1000, 1001
+    plan = K.plan_trash(rows, NAMES, {"deals@shop.example"}, set(), set(), before_ms=1000)
+    assert plan["ids"] == ["old"]
+
+
 def test_plan_trash_with_no_approved_senders_is_empty():
     assert K.plan_trash([row("junk1")], NAMES, set(), set(), set())["ids"] == []
 
