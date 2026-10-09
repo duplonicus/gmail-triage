@@ -20,6 +20,9 @@ Gmail users.watch ──► Pub/Sub topic ──► pull subscription ──► 
 This is a personal tool, published as-is. It runs one mailbox, on Linux with
 systemd, and the label set is the one its author uses. Fork it if yours differs.
 
+How it fits together, with diagrams and what each design decision gives and
+costs: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## What it does to your mailbox
 
 - **Creates 30 labels** the first time it runs (below), coloured. A label you
