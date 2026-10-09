@@ -243,6 +243,22 @@ unsubscribe header), sits in Promotions or Social, has no document attached,
 is not in a thread you wrote in, is not starred, and carries no triage label
 other than Promos or Newsletters. The census reports; it deletes nothing.
 
+## Clean up an old inbox
+
+The daemon only handles new mail. For the backlog there is a one-off tool you
+run by hand. Without `--apply` it only reports; with it, a restore file is
+written to `~/.config/gmail-triage/backups/` before anything changes.
+
+| | |
+|---|---|
+| `.venv/bin/gmail-triage-cleanup archive --older-than 30d --mark-read` | take inbox mail older than 30 days out of the inbox; starred mail stays |
+| `.venv/bin/gmail-triage-cleanup trash ~/backup/gmail --senders approved.txt` | move the census's delete candidates to Trash, only for the senders you list |
+| `.venv/bin/gmail-triage-cleanup restore <restore file>` | undo one of the above |
+
+`approved.txt` is one sender address a line, picked from `senders.csv`. Gmail
+empties Trash after 30 days, which is when the storage is freed. Archiving
+frees none: archived mail stays in All Mail.
+
 ## Failure behaviour
 
 - Hung anywhere (socket, `claude` subprocess) → no `WATCHDOG=1` for 120 s → systemd kills and restarts it.

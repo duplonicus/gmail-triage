@@ -22,6 +22,7 @@ gmail-triage = "gmail_triage.daemon:main"
 gmail-triage-auth = "gmail_triage.auth:main"
 gmail-triage-backup = "gmail_triage.backup:main"
 gmail-triage-census = "gmail_triage.census:main"
+gmail-triage-cleanup = "gmail_triage.cleanup:main"
 
 [build-system]
 requires = ["setuptools>=69"]
