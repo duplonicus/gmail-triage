@@ -284,6 +284,107 @@ def test_bad_archive_labels_are_a_config_error(tmp_path, line):
         C.load(config_with(tmp_path, line))
 
 
+# --------------------------------------------------------------------------- mark read (opt-in)
+
+READ = frozenset({"Jobs › Applied", "Jobs › Rejected", "Jobs › Alerts", "Jobs › Skip"})
+CFG_READ = dataclasses.replace(CFG, mark_read_labels=READ)
+
+
+def test_mark_read_is_off_unless_configured():
+    assert CFG.mark_read_labels == frozenset()
+    assert 'mark_read_labels = []' in C.EXAMPLE_CONFIG_FILE.read_text()
+    for label in K.ALL_LABELS:
+        assert K.mark_read_policy([label], False, CFG.mark_read_labels) is False
+
+
+@pytest.mark.parametrize("labels,starred,expected", [
+    (["Jobs › Applied"], False, True),
+    (["Jobs › Rejected"], False, True),          # important, but still read
+    (["Jobs › Alerts"], False, True),
+    (["Jobs › Interview"], True, False),         # not listed, and always starred
+    (["Jobs › Reply"], True, False),
+    (["Promos"], False, False),
+    (["Jobs › Alerts"], True, False),            # starred: something to do
+    (["Security › Suspicious", "Jobs › Alerts"], False, False),
+])
+def test_mark_read_policy(labels, starred, expected):
+    assert K.mark_read_policy(labels, starred, READ) is expected
+
+
+def test_mark_read_never_covers_starred_job_mail_even_if_listed():
+    every_job = frozenset(l for l in K.ALL_LABELS if l.startswith("Jobs"))
+    for label in K.ALWAYS_STAR:
+        starred = K.star_policy([label], False)
+        assert K.mark_read_policy([label], starred, every_job) is False
+
+
+def test_modify_body_marks_read_only_when_the_decision_says_so():
+    ids = {l: f"L_{l}" for l in K.ALL_LABELS}
+    d = decided("1", ["Jobs › Alerts"])
+    assert G.modify_body({**d, "archive": True, "mark_read": True}, ids) == {
+        "addLabelIds": ["L_Jobs › Alerts"], "removeLabelIds": ["IMPORTANT", "INBOX", "UNREAD"]}
+    assert G.modify_body({**decided("1", ["Jobs › Rejected"], important=True), "mark_read": True}, ids) == {
+        "addLabelIds": ["L_Jobs › Rejected", "IMPORTANT"], "removeLabelIds": ["UNREAD"]}
+
+
+@pytest.mark.parametrize("body", [
+    {"addLabelIds": ["L", "STARRED"], "removeLabelIds": ["IMPORTANT", "UNREAD"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["UNREAD", "IMPORTANT"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "UNREAD", "UNREAD"]},
+    {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "INBOX", "UNREAD"]},  # archive_ok False
+    {"addLabelIds": ["L"], "removeLabelIds": ["IMPORTANT", "UNREAD", "STARRED"]},
+])
+def test_apply_refuses_bad_mark_read_shapes_even_when_marking_read_is_on(body):
+    with pytest.raises(AssertionError):
+        G.apply(FakeGmail({}), "1", body, read_ok=True)
+
+
+def test_apply_allows_mark_read_on_important_mail_when_configured():
+    g = FakeGmail({"1": msg("1")})
+    G.apply(g, "1", {"addLabelIds": ["L", "IMPORTANT"], "removeLabelIds": ["UNREAD"]}, read_ok=True)
+    assert g.modified
+
+
+def test_configured_label_is_marked_read_and_the_reply_is_not(tmp_path):
+    g, ids = run_three(tmp_path, dataclasses.replace(CFG_ARCHIVE, mark_read_labels=READ))
+    assert dict(g.modified) == {
+        "a": {"addLabelIds": [ids["Jobs › Alerts"]], "removeLabelIds": ["IMPORTANT", "INBOX", "UNREAD"]},
+        "b": {"addLabelIds": [ids["Jobs › Reply"], "STARRED", "IMPORTANT"]},
+        "c": {"addLabelIds": [ids["Promos"]], "removeLabelIds": ["IMPORTANT"]},
+    }
+    assert "UNREAD" not in g._messages["a"]["labelIds"]
+    assert "UNREAD" in g._messages["b"]["labelIds"] and "UNREAD" in g._messages["c"]["labelIds"]
+
+
+def test_default_config_never_marks_read(tmp_path):
+    g, _ = run_three(tmp_path, CFG)
+    assert all("UNREAD" not in body.get("removeLabelIds", []) for _, body in g.modified)
+    assert all("UNREAD" in g._messages[i]["labelIds"] for i in "abc")
+
+
+def test_dry_run_marks_nothing_read(tmp_path, caplog):
+    with caplog.at_level(logging.INFO, logger="test-triage"):
+        g, _ = run_three(tmp_path, CFG_READ, dry_run=True)
+    assert g.modified == []
+    lines = [r.getMessage() for r in caplog.records if r.name == "test-triage"]
+    assert [("read=yes" in l) for l in lines] == [True, False, False]
+
+
+def test_config_loads_mark_read_labels(tmp_path):
+    f = config_with(tmp_path, "archive_labels = []")
+    f.write_text(f.read_text().replace("mark_read_labels = []", 'mark_read_labels = ["Jobs › Applied"]'), encoding="utf-8")
+    assert C.load(f).mark_read_labels == frozenset({"Jobs › Applied"})
+
+
+@pytest.mark.parametrize("line", ['mark_read_labels = ["Jobs/Applied"]', 'mark_read_labels = ["UNREAD"]',
+                                  'mark_read_labels = "Promos"'])
+def test_bad_mark_read_labels_are_a_config_error(tmp_path, line):
+    f = config_with(tmp_path, "archive_labels = []")
+    f.write_text(f.read_text().replace("mark_read_labels = []", line), encoding="utf-8")
+    with pytest.raises(C.ConfigError, match="mark_read_labels"):
+        C.load(f)
+
+
 @pytest.mark.parametrize("labels,expected", [
     (["INBOX"], True),
     (["INBOX", "IMPORTANT"], True),  # Gmail's IMPORTANT marker is ignored
@@ -421,7 +522,7 @@ def test_triage_log_columns_survive_pipes_in_subject(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="test-triage"):
         t.sync()
     line = [r.getMessage() for r in caplog.records if r.name == "test-triage"][0]
-    assert line.split(" | ") == ["X ¦ Y <x@y.com>", "Your link ¦ 2026-09-27 02:52", "Security", "star=no", "important=no", "archived=no", "a ¦ b"]
+    assert line.split(" | ") == ["X ¦ Y <x@y.com>", "Your link ¦ 2026-09-27 02:52", "Security", "star=no", "important=no", "archived=no", "read=no", "a ¦ b"]
 
 
 # --------------------------------------------------------------------------- star policy

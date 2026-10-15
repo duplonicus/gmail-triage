@@ -221,6 +221,16 @@ def archive_policy(labels: list[str], starred: bool, important: bool, archive_la
     return bool(archive_labels & set(labels))
 
 
+def mark_read_policy(labels: list[str], starred: bool, mark_read_labels: frozenset[str]) -> bool:
+    """Mark the message read? Only for labels the owner listed in config, and
+    never mail that is starred (something to do, e.g. Jobs › Interview) or
+    suspicious. Important mail may be marked read: a rejection is worth
+    keeping, not worth an unread count."""
+    if starred or SUSPICIOUS in labels:
+        return False
+    return bool(mark_read_labels & set(labels))
+
+
 def parse_output(text: str, expected_ids: set[str]) -> tuple[dict[str, dict], dict[str, str]]:
     """Split model output into (valid decisions by id, invalid reason by id).
 

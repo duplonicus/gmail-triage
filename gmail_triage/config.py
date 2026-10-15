@@ -37,6 +37,7 @@ class Config:
     safety_sweep_minutes: float
     watch_renew_hours: float
     archive_labels: frozenset[str] = frozenset()
+    mark_read_labels: frozenset[str] = frozenset()
 
     @property
     def topic_path(self) -> str:
@@ -60,12 +61,16 @@ def load(path: Path = CONFIG_FILE) -> Config:
         raise ConfigError(f"classifier.backend must be 'cli' or 'api', got {c['backend']!r}")
     from .classifier import ALL_LABELS  # the label names live with the classifier
 
-    archive = d.get("archive_labels", [])
-    if not isinstance(archive, list) or not all(isinstance(l, str) for l in archive):
-        raise ConfigError("daemon.archive_labels must be a list of label names")
-    unknown = sorted(set(archive) - set(ALL_LABELS))
-    if unknown:
-        raise ConfigError(f"daemon.archive_labels has unknown labels: {unknown}")
+    def label_list(key: str) -> frozenset[str]:
+        names = d.get(key, [])
+        if not isinstance(names, list) or not all(isinstance(l, str) for l in names):
+            raise ConfigError(f"daemon.{key} must be a list of label names")
+        unknown = sorted(set(names) - set(ALL_LABELS))
+        if unknown:
+            raise ConfigError(f"daemon.{key} has unknown labels: {unknown}")
+        return frozenset(names)
+
+    archive, mark_read = label_list("archive_labels"), label_list("mark_read_labels")
     return Config(
         project_id=g["project_id"],
         topic=g["topic"],
@@ -78,5 +83,6 @@ def load(path: Path = CONFIG_FILE) -> Config:
         debounce_seconds=float(d["debounce_seconds"]),
         safety_sweep_minutes=float(d["safety_sweep_minutes"]),
         watch_renew_hours=float(d["watch_renew_hours"]),
-        archive_labels=frozenset(archive),
+        archive_labels=archive,
+        mark_read_labels=mark_read,
     )

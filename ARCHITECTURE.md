@@ -145,7 +145,8 @@ flowchart TD
     valid -- yes --> star[star_policy:<br/>label can force or forbid the star]
     star --> imp[important_policy:<br/>starred, or an always-important label]
     imp --> arch[archive_policy:<br/>label is opted in, and not starred,<br/>important or suspicious]
-    arch --> body[modify_body:<br/>build the one allowed shape]
+    arch --> read[mark_read_policy:<br/>label is opted in, and not starred<br/>or suspicious]
+    read --> body[modify_body:<br/>build the one allowed shape]
     body --> guard{apply: assertions pass?}
     guard -- yes --> gm([messages.modify])
     guard -- no --> crash([AssertionError, nothing sent])
@@ -153,23 +154,25 @@ flowchart TD
 
 **Gate 1, validation** (`classifier.validate_decision`, `parse_output`). A decision must have exactly the keys `id`, `labels`, `star`, `reason`. The id must be one that was sent. Every label must be in the fixed list. There must be exactly one primary label; `Security › Suspicious` may stand alone or sit beside one primary. A missing or duplicated id counts as invalid.
 
-**Gate 2, policy in code** (`star_policy`, `important_policy`, `archive_policy`). The model's `star` is only an input.
+**Gate 2, policy in code** (`star_policy`, `important_policy`, `archive_policy`, `mark_read_policy`). The model's `star` is only an input.
 
 | Outcome | Rule |
 |---|---|
 | Star | Never for `Security › Suspicious` or any label in `NEVER_STAR` (14 labels: all Security, rejections, alerts, receipts, statements, orders, notifications, newsletters, promos). Always for `Jobs › Reply` and `Jobs › Interview`. Otherwise the model's `star` |
 | Important | Never for suspicious mail. Yes if starred, or the label is `Jobs › Rejected` or `Personal`. The model has no say |
 | Archive | Only if the label is listed in `daemon.archive_labels` (empty by default), and never for mail that is starred, important or suspicious |
+| Mark read | Only if the label is listed in `daemon.mark_read_labels` (empty by default), and never for mail that is starred or suspicious. Important mail (a rejection) may be marked read |
 
 **Gate 3, the write guard** (`gmail.modify_body`, `gmail.apply`). `apply` asserts the request before sending it:
 
 - The body has only `addLabelIds` and, optionally, `removeLabelIds`.
-- The only labels ever removed are `IMPORTANT` and `INBOX`.
+- The only labels ever removed are `IMPORTANT`, `INBOX` and `UNREAD`, in that order.
 - `IMPORTANT` is always either added or removed, never both and never neither.
 - Nothing adds `TRASH`, `SPAM`, `UNREAD` or `INBOX`.
 - `INBOX` is removed only when archiving is configured, and never on a message being starred or marked important.
+- `UNREAD` is removed only when marking read is configured, and never on a message being starred.
 
-So the daemon cannot delete mail, mark it read, unstar it or move it to spam, whatever the model returns.
+So the daemon cannot delete mail, mark unconfigured mail read, unstar it or move it to spam, whatever the model returns.
 
 ### How the prompt is built
 
@@ -243,9 +246,9 @@ There is no database. These are the stores.
 |---|---|---|
 | Sync cursor | `state.json` in the checkout (gitignored) | `history_id` (last fully processed), `last_success` and `last_watch` timestamps |
 | Triage labels on messages | Gmail itself | A message that already carries any of the 30 labels is skipped. This is what makes a repeated sync safe |
-| Per-message log | `logs/triage.log` | Time, from, subject, labels, star, important, archived, the model's reason. Rotates at 2 MB, 5 files kept |
+| Per-message log | `logs/triage.log` | Time, from, subject, labels, star, important, archived, read, the model's reason. Rotates at 2 MB, 5 files kept |
 | Service log | systemd journal | Operational lines, token counts per classifier call |
-| Config | `config/config.toml` (gitignored; `config.example.toml` is committed) | Cloud project and topic names, backend, model, batch size, timers, `archive_labels` |
+| Config | `config/config.toml` (gitignored; `config.example.toml` is committed) | Cloud project and topic names, backend, model, batch size, timers, `archive_labels`, `mark_read_labels` |
 | Owner profile | `~/.config/gmail-triage/profile.toml` | `owner`, `general`, `[notes]` keyed by label name |
 | Secrets | `~/.config/gmail-triage/` | `token.json` (mode 600), `client_secret.json`, `.env` for the API backend |
 | Backup | A directory the owner chooses | `messages/<last two id chars>/<id>.eml`, `index.jsonl` (one row per message), `labels.json`, `complete.json` |

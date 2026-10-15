@@ -19,7 +19,7 @@ from . import config as C
 from . import gmail as G
 from . import profile as P
 from . import sdnotify
-from .classifier import Classifier, ClassifierError, archive_policy
+from .classifier import Classifier, ClassifierError, archive_policy, mark_read_policy
 from .state import State
 
 log = logging.getLogger("gmail_triage")
@@ -71,12 +71,14 @@ class Triage:
                 continue
             d = decisions[mid]
             d["archive"] = archive_policy(d["labels"], d["star"], d["important"], self.cfg.archive_labels)
+            d["mark_read"] = mark_read_policy(d["labels"], d["star"], self.cfg.mark_read_labels)
             if not self.dry_run:
-                G.apply(self.svc, mid, G.modify_body(d, self.label_ids), archive_ok=bool(self.cfg.archive_labels))
-            self.tlog.info("%s%s | %s | %s | star=%s | important=%s | archived=%s | %s", prefix, frm, subj,
+                G.apply(self.svc, mid, G.modify_body(d, self.label_ids), archive_ok=bool(self.cfg.archive_labels),
+                        read_ok=bool(self.cfg.mark_read_labels))
+            self.tlog.info("%s%s | %s | %s | star=%s | important=%s | archived=%s | read=%s | %s", prefix, frm, subj,
                            ",".join(d["labels"]), "yes" if d["star"] else "no",
                            "yes" if d["important"] else "no", "yes" if d["archive"] else "no",
-                           _clip(d["reason"], 100))
+                           "yes" if d["mark_read"] else "no", _clip(d["reason"], 100))
             self.ping()
         log.info("triaged %d, skipped %d", len(decisions), len(skipped))
         return len(decisions)

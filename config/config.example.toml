@@ -23,3 +23,9 @@ watch_renew_hours = 24
 # starred, important or Security › Suspicious always stays in the inbox.
 # Example: archive_labels = ["Jobs › Alerts", "Promos"]
 archive_labels = []
+# Labels whose mail is marked read once labelled (it stays wherever archiving
+# leaves it). Empty = never mark read. Starred mail (e.g. Jobs › Reply and
+# Jobs › Interview, which are always starred) and Security › Suspicious mail
+# always stay unread.
+# Example: mark_read_labels = ["Jobs › Applied", "Jobs › Rejected"]
+mark_read_labels = []

@@ -37,8 +37,13 @@ costs: [ARCHITECTURE.md](ARCHITECTURE.md).
   the inbox after it is labelled. It stays unread under its label. Mail that is
   starred, important or `Security › Suspicious` always stays in the inbox.
   Restart the service after changing it.
+- **Marks read only what you opt in.** `daemon.mark_read_labels` works the same
+  way and is empty by default: list labels there, e.g. `["Jobs › Applied",
+  "Jobs › Rejected"]`, and new mail given one of them is marked read. Starred
+  mail (`Jobs › Reply` and `Jobs › Interview` are always starred) and
+  `Security › Suspicious` mail always stay unread.
 - **Nothing else.** `gmail.apply()` asserts that the only labels ever removed
-  are `IMPORTANT` and, when you configured archiving, `INBOX`, and that nothing
+  are `IMPORTANT` and, when you configured them, `INBOX` and `UNREAD`, and that nothing
   adds TRASH, SPAM, UNREAD or INBOX. Mail in spam, trash or drafts, and mail
   that already has one of the labels, is skipped.
 - **What leaves your machine:** each message's From, Subject, List-Unsubscribe

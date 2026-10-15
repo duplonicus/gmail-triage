@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 STARRED = "STARRED"
 IMPORTANT = "IMPORTANT"
 INBOX = "INBOX"
+UNREAD = "UNREAD"
 META_HEADERS = ["From", "To", "Subject", "Date", "List-Unsubscribe"]
 # Messages carrying any of these are never touched.
 UNTOUCHABLE = {"SPAM", "TRASH", "DRAFT"}
@@ -217,15 +218,18 @@ def needs_triage(msg: dict, triage_label_ids: set[str]) -> bool:
 def modify_body(decision: dict, label_ids: dict[str, str]) -> dict:
     """The ONLY shape of change we ever make: add triage labels (+ STARRED),
     set IMPORTANT one way or the other, and, when the decision says `archive`
-    (the owner opted that label in via config), take the message out of INBOX.
+    or `mark_read` (the owner opted that label in via config), take the message
+    out of INBOX or remove UNREAD.
 
     IMPORTANT is the one label we remove by default (Gmail's own guess is
-    noise): never mark read, unstar, delete or touch spam.
+    noise): never unstar, delete or touch spam.
     """
     add = [label_ids[l] for l in decision["labels"]]
     if decision["star"]:
         add.append(STARRED)
     remove = [INBOX] if decision.get("archive") else []
+    if decision.get("mark_read"):
+        remove.append(UNREAD)
     if decision["important"]:
         add.append(IMPORTANT)
     else:
@@ -233,17 +237,22 @@ def modify_body(decision: dict, label_ids: dict[str, str]) -> dict:
     return {"addLabelIds": add, "removeLabelIds": remove} if remove else {"addLabelIds": add}
 
 
-def apply(svc, msg_id: str, body: dict, archive_ok: bool = False) -> None:
+def apply(svc, msg_id: str, body: dict, archive_ok: bool = False, read_ok: bool = False) -> None:
     """Send one change, refusing any shape other than modify_body's.
 
     Removing INBOX is refused unless the caller says the owner configured
     archive_labels, and never for a message being starred or marked important.
+    Removing UNREAD is refused unless the owner configured mark_read_labels,
+    and never for a message being starred.
     """
     assert set(body) in ({"addLabelIds"}, {"addLabelIds", "removeLabelIds"}), body
     add, remove = body["addLabelIds"], body.get("removeLabelIds")
-    assert remove is None or remove in ([IMPORTANT], [INBOX], [IMPORTANT, INBOX]), body
+    assert remove is None or (remove and remove == [l for l in (IMPORTANT, INBOX, UNREAD) if l in remove]
+                              and len(set(remove)) == len(remove)), body
     assert (IMPORTANT in add) != (IMPORTANT in (remove or [])), body
     assert not set(add) & {"TRASH", "SPAM", "UNREAD", "INBOX"}, body
     if INBOX in (remove or []):
         assert archive_ok and not set(add) & {STARRED, IMPORTANT}, body
+    if UNREAD in (remove or []):
+        assert read_ok and STARRED not in add, body
     svc.users().messages().modify(userId="me", id=msg_id, body=body).execute(num_retries=RETRIES)
