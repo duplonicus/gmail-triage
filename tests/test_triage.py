@@ -455,6 +455,29 @@ def test_sync_classifier_failure_does_not_advance_history(tmp_path):
     assert state.history_id == "50" and g.modified == []
 
 
+def test_sync_records_when_failures_began_and_clears_on_success(tmp_path):
+    g = FakeGmail({"a": msg("a")}, history=[added("a")], history_id="77")
+    fail = {"on": True}
+
+    def runner(prompt):
+        if fail["on"]:
+            raise K.ClassifierError("not logged in")
+        return echo_runner(lambda m: ["Promos"])(prompt)
+
+    t, _, state = make(tmp_path, g, runner)
+    with pytest.raises(K.ClassifierError):
+        t.sync()
+    first = json.loads((tmp_path / "state.json").read_text())["failing_since"]
+    assert first > 0
+    with pytest.raises(K.ClassifierError):
+        t.sync()
+    assert json.loads((tmp_path / "state.json").read_text())["failing_since"] == first  # start of the run, kept
+    fail["on"] = False
+    assert t.sync() == 1
+    saved = json.loads((tmp_path / "state.json").read_text())
+    assert saved["failing_since"] == 0 and saved["last_success"] > 0
+
+
 def test_sync_404_falls_back_to_messages_list(tmp_path):
     g = FakeGmail({"a": msg("a")}, history_404=True, history_id="900")
     t, ids, state = make(tmp_path, g, echo_runner(lambda m: ["Promos"]))

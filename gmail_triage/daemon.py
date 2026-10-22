@@ -84,7 +84,20 @@ class Triage:
         return len(decisions)
 
     def sync(self) -> int:
-        """Process everything since the saved historyId, then advance it."""
+        """Process everything since the saved historyId, then advance it.
+
+        A failed sync records when the current run of failures began
+        (`failing_since`, 0 when the last sync worked), so daemon-health can
+        page a few minutes into an outage instead of waiting for last_success
+        to go stale."""
+        try:
+            return self._sync()
+        except Exception:
+            if not self.state.data.get("failing_since"):
+                self.state.update(failing_since=time.time())
+            raise
+
+    def _sync(self) -> int:
         start = self.state.history_id
         try:
             ids, latest = G.new_inbox_ids_since(self.svc, start)
@@ -95,7 +108,7 @@ class Triage:
             latest = G.current_history_id(self.svc)
             ids = G.list_ids(self.svc, q)
         n = self.process_ids(ids)
-        self.state.update(history_id=latest, last_success=time.time())
+        self.state.update(history_id=latest, last_success=time.time(), failing_since=0)
         return n
 
     def backfill(self, days: int) -> int:
