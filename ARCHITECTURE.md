@@ -244,7 +244,7 @@ There is no database. These are the stores.
 
 | Store | Where | Key and contents |
 |---|---|---|
-| Sync cursor | `state.json` in the checkout (gitignored) | `history_id` (last fully processed), `last_success` and `last_watch` timestamps |
+| Sync cursor | `state.json` in the checkout (gitignored) | `history_id` (last fully processed), `last_success` and `last_watch` timestamps, and `failing_since` (when the current run of failed syncs began, 0 while syncs work; daemon-health reads it) |
 | Triage labels on messages | Gmail itself | A message that already carries any of the 30 labels is skipped. This is what makes a repeated sync safe |
 | Per-message log | `logs/triage.log` | Time, from, subject, labels, star, important, archived, read, the model's reason. Rotates at 2 MB, 5 files kept |
 | Service log | systemd journal | Operational lines, token counts per classifier call |

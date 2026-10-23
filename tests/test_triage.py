@@ -478,6 +478,16 @@ def test_sync_records_when_failures_began_and_clears_on_success(tmp_path):
     assert saved["failing_since"] == 0 and saved["last_success"] > 0
 
 
+def test_architecture_doc_lists_every_state_field():
+    import re
+    source = (C.PROJECT_DIR / "gmail_triage" / "daemon.py").read_text(encoding="utf-8")
+    fields = {f for call in re.findall(r"state\.update\(([^)]*)\)", source) for f in re.findall(r"(\w+)=", call)}
+    assert fields >= {"history_id", "last_success", "last_watch", "failing_since"}
+    doc = (C.PROJECT_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    row = next(line for line in doc.splitlines() if line.startswith("| Sync cursor |"))
+    assert [f for f in sorted(fields) if f"`{f}`" not in row] == []
+
+
 def test_sync_404_falls_back_to_messages_list(tmp_path):
     g = FakeGmail({"a": msg("a")}, history_404=True, history_id="900")
     t, ids, state = make(tmp_path, g, echo_runner(lambda m: ["Promos"]))
