@@ -127,6 +127,15 @@ def parse_days(s: str) -> int:
     return int(m.group(1))
 
 
+def start_cursor(svc, state: State) -> None:
+    """First run: start from the current historyId. Writes every field
+    daemon-health reads, so a fresh state.json has `failing_since` before
+    the first sync."""
+    hid = G.current_history_id(svc)
+    log.info("first run: starting from current historyId %s (use --backfill for older mail)", hid)
+    state.update(history_id=hid, last_success=time.time(), failing_since=0)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="gmail-triage", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -160,9 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("owner profile: %d label notes from %s", len(profile.notes), C.PROFILE_FILE)
 
     if not state.history_id:
-        hid = G.current_history_id(svc)
-        log.info("first run: starting from current historyId %s (use --backfill for older mail)", hid)
-        state.update(history_id=hid, last_success=time.time())
+        start_cursor(svc, state)
 
     if args.backfill:
         t.backfill(args.backfill)

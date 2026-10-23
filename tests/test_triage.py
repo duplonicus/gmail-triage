@@ -8,7 +8,7 @@ from gmail_triage import classifier as K
 from gmail_triage import gmail as G
 from gmail_triage import config as C
 from gmail_triage import profile as P
-from gmail_triage.daemon import Triage, parse_days
+from gmail_triage.daemon import Triage, parse_days, start_cursor
 from gmail_triage.state import State
 
 from fakes import FakeGmail, msg
@@ -476,6 +476,15 @@ def test_sync_records_when_failures_began_and_clears_on_success(tmp_path):
     assert t.sync() == 1
     saved = json.loads((tmp_path / "state.json").read_text())
     assert saved["failing_since"] == 0 and saved["last_success"] > 0
+
+
+def test_first_run_writes_failing_since_before_any_sync(tmp_path):
+    # daemon-health reads state.json[failing_since]; a missing key fails its whole state-file job
+    g = FakeGmail({}, history_id="900")
+    state = State(tmp_path / "state.json")
+    start_cursor(g, state)
+    saved = json.loads((tmp_path / "state.json").read_text())
+    assert saved["history_id"] == "900" and saved["failing_since"] == 0 and saved["last_success"] > 0
 
 
 def test_architecture_doc_lists_every_state_field():
